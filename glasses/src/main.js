@@ -7,6 +7,7 @@ let bridge;
 let flashTimer;
 
 async function api(path, body) {
+  if (window.__quiet) throw new Error('quiet');
   const r = await fetch(`${SERVER}${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ token: state.token, ...body }),
@@ -282,3 +283,20 @@ document.getElementById('pairForm')?.addEventListener('submit', async (ev) => {
   try { await pair(document.getElementById('code').value.trim().toUpperCase()); out.textContent = 'Paired. Look at your glasses.'; }
   catch { out.textContent = 'That code did not work. Ask your coordinator for a new one.'; }
 });
+
+// Developer panel, only with ?dev=1. The simulator sends no battery, wearing or signal events,
+// so this fakes them to show the notices. It is not part of the real app.
+if (new URLSearchParams(location.search).get('dev') === '1') {
+  const box = document.createElement('div');
+  box.style.cssText = 'margin-top:24px;padding:12px;border:1px dashed #999';
+  box.innerHTML = '<b>Developer panel</b><br><small>Fakes device state for testing. Not part of the real app.</small>';
+  const add = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.type = 'button'; b.onclick = fn; box.append(b); };
+  const set = (patch) => { state.device = { ...state.device, ...patch }; heartbeat(); paint(); };
+  add('Battery 10%', () => set({ batteryLevel: 10, isCharging: false }));
+  add('Battery 80% on charge', () => set({ batteryLevel: 80, isCharging: true }));
+  add('Glasses off', () => set({ isWearing: false, isCharging: false, isInCase: false }));
+  add('Glasses back on', () => set({ isWearing: true }));
+  add('Go quiet (stop talking to server)', () => { window.__quiet = true; });
+  add('Come back', () => { window.__quiet = false; sync(); heartbeat(); });
+  document.body.append(box);
+}
