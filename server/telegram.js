@@ -31,7 +31,8 @@ export class Telegram {
     const prev = this.chains.get(chatId) || Promise.resolve();
     const next = prev.catch(() => {}).then(async () => {
       const out = await fn();
-      await this.sleep(this.minGapMs);
+      // Groups (negative ids) are capped at 20 messages a minute, so leave 3.1 s between sends.
+      await this.sleep(chatId < 0 ? Math.max(this.minGapMs, 3100) : this.minGapMs);
       return out;
     });
     this.chains.set(chatId, next);
