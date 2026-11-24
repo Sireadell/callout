@@ -100,7 +100,15 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
   }
 
   // One pinned message per run, rewritten only when its text changes.
-  async function updateBoard(runId) {
+  // Updates for one run run one at a time. Without this, notices arriving together each saw "no board yet"
+  // and posted their own copy (found in the first live Telegram test).
+  const boardChain = new Map();
+  function updateBoard(runId) {
+    const next = (boardChain.get(runId) || Promise.resolve()).then(() => updateBoardNow(runId)).catch(() => {});
+    boardChain.set(runId, next);
+    return next;
+  }
+  async function updateBoardNow(runId) {
     const run = engine.runs[runId];
     const team = run && engine.teams[run.teamId];
     if (!run || !team?.telegram || !telegram) return;

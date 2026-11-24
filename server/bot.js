@@ -39,6 +39,13 @@ export function makeBot({ engine, telegram, router, botUsername = 'callout_bot',
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
 
   async function onMessage(m) {
+    // Turning on Topics changes a group into a supergroup with a new chat id. Follow it.
+    if (m.migrate_to_chat_id) {
+      const t = engine.teamByChat(m.chat.id);
+      if (t?.telegram?.chatId === m.chat.id) t.telegram.chatId = m.migrate_to_chat_id;
+      if (t?.telegram?.coordinatorChatId === m.chat.id) t.telegram.coordinatorChatId = m.migrate_to_chat_id;
+      return;
+    }
     const chatId = m.chat.id;
     const text = (m.text || '').trim();
     const cmd = text.match(/^\/(\w+)(?:@\w+)?\s*([\s\S]*)$/);

@@ -360,3 +360,24 @@ test('a thumbs up on a clue puts Seen on the lens; other emoji and removals do n
   await bot.handle({ message_reaction: { chat: { id: -500 }, message_id: 99999, new_reaction: [{ type: 'emoji', emoji: '\u{1F44D}' }] } });
   assert.equal(engine.sync(token).replies.length, 0);
 });
+
+// ---- found in the first live Telegram test ----
+test('notices that arrive together make one board, edited in place', async () => {
+  const { bot, tg, engine } = setup();
+  await bot.handle(msg('/team Wardens')); await bot.handle(msg('/run Elm Street')); await bot.handle(msg('/add Ana | Area A1'));
+  const { token } = engine.pair(lastCode(tg));
+  engine.checkIn(token); engine.heartbeat(token, { battery: 80, worn: true });
+  engine.clue(token, { text: 'House empty' });
+  for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+  const boards = tg.out.filter((m) => !m.edit && /^Run: Elm Street/.test(m.text || ''));
+  assert.equal(boards.length, 1);
+  assert.equal(tg.pins.length, 1);
+});
+
+test('a group turned into a supergroup keeps its team', async () => {
+  const { bot, tg, engine } = setup();
+  await bot.handle(msg('/team Wardens'));
+  await bot.handle({ message: { chat: { id: -500, type: 'group' }, migrate_to_chat_id: -1005, message_id: 2 } });
+  assert.equal(engine.teamByChat(-1005)?.name, 'Wardens');
+  assert.equal(engine.teamByChat(-500), undefined);
+});
