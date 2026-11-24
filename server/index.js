@@ -7,6 +7,8 @@ import { Discord } from './discord.js';
 import { makeRouter } from './router.js';
 import { makeBot } from './bot.js';
 import { makeStt } from './stt.js';
+import { makeAi } from './ai.js';
+import { makeSheet } from './sheet.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const PORT = Number(process.env.PORT || 8787);
@@ -19,6 +21,9 @@ const router = makeRouter({ engine, telegram, discord });
 engine.notify = router.notify;
 if (fs.existsSync(STATE)) engine.restore(JSON.parse(fs.readFileSync(STATE, 'utf8')));
 let bot = null;
+const ai = makeAi({ anthropicKey: process.env.ANTHROPIC_API_KEY, openrouterKey: process.env.OPENROUTER_API_KEY });
+const sheet = process.env.GOOGLE_SERVICE_ACCOUNT_FILE && fs.existsSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE)
+  ? makeSheet({ serviceAccount: JSON.parse(fs.readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE, 'utf8')) }) : null;
 
 // Save to disk every few seconds when something changed.
 let lastSaved = '';
@@ -104,7 +109,7 @@ async function poll() {
 
 async function startTelegram() {
   const me = await telegram.getMe();
-  bot = makeBot({ engine, telegram, router, botUsername: me.username });
+  bot = makeBot({ engine, telegram, router, botUsername: me.username, ai, sheet });
   await bot.register().catch((e) => console.error('commands:', e.message));
   if (process.env.TELEGRAM_WEBHOOK_SECRET && process.env.PUBLIC_URL) {
     await telegram.setWebhook(`${process.env.PUBLIC_URL}/telegram/webhook`, process.env.TELEGRAM_WEBHOOK_SECRET);

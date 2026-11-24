@@ -150,7 +150,7 @@ export class Engine {
     replies.forEach((r) => { r.delivered = true; });
     return {
       runName: run.name, area: v.area, dueInMs: v.lastCheckin + this.cfg.checkinMs - now,
-      step: v.step, replies: replies.map((r) => ({ id: r.id, text: r.text, by: r.by })),
+      step: v.step, replies: replies.map((r) => ({ id: r.id, text: r.short || r.text, full: r.text, by: r.by })),
       team: this.teamStatus(run.id),
     };
   }
@@ -164,13 +164,16 @@ export class Engine {
   }
 
   // ---------- events from the coordinator (chat apps) ----------
-  reply(runId, { volunteerId, text, by = 'coordinator' }) {
+  reply(runId, { volunteerId, text, by = 'coordinator', short }) {
     const run = this._run(runId);
     if (!run.volunteers[volunteerId]) throw new Error('unknown volunteer');
-    const r = { id: newId('rep'), volunteerId, text: String(text).slice(0, 500), by, at: this.clock.now(), delivered: false, confirmedAt: null };
+    const r = { id: newId('rep'), volunteerId, text: String(text).slice(0, 500), short: short ? String(short).slice(0, 80) : undefined, by, at: this.clock.now(), delivered: false, confirmedAt: null };
     run.replies.push(r);
     return r;
   }
+
+  // A notice from outside the glasses flow (summary, run closed). Works on finished runs too.
+  announce(runId, audience, kind, text, extra = {}) { this._emit(this._run(runId), audience, kind, text, extra); }
 
   // ---------- the clock ----------
   tick() {

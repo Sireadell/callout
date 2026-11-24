@@ -4,7 +4,7 @@ const ICON = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '�
 // Loud notices buzz phones. Everything else arrives quietly.
 const LOUD = new Set(['missed_checkin', 'missed_checkin_team', 'went_silent']);
 // Notices that carry a position or a person's details cannot be forwarded or saved from the chat.
-const OPEN = new Set(['run_started', 'joined', 'debrief']);
+const OPEN = new Set(['run_started', 'joined', 'debrief', 'summary']);
 export const PRESETS = ['Stay where you are', 'Move to your next area', 'Return to base', 'Call me'];
 
 const MIN_MOVE_M = 25;      // a live location moves only after this many metres...
@@ -76,15 +76,17 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
     }
     if (run && n.volunteerId) (run.msgIndex ||= {})[`${chat}:${sent.message_id}`] = n.volunteerId;
     if (run && n.kind === 'clue') (run.clueMsg ||= {})[`${chat}:${n.clueId}`] = sent.message_id;
-    if (run && n.kind === 'debrief') {
-      await stopLive(run.id);
-      if (run.topicId && chat === t.chatId) await telegram.closeForumTopic(t.chatId, run.topicId).catch(() => {});
-    }
+    if (run && n.kind === 'debrief') await stopLive(run.id);
   }
 
   async function notify(n) {
     const team = engine.teams[n.teamId];
     if (!team) return;
+    if (n.kind === 'run_closed') { // last step of a run: close its topic
+      const run = engine.runs[n.runId];
+      if (run?.topicId && team.telegram && telegram) await telegram.closeForumTopic(team.telegram.chatId, run.topicId).catch(() => {});
+      return;
+    }
     const jobs = [];
     if (team.telegram && telegram) jobs.push(toTelegram(team, n));
     if (team.discord && discord && n.kind !== 'clue_photo') jobs.push(discord.post(team.discord.webhookUrl, n.text));

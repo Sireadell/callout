@@ -1,5 +1,5 @@
 import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole } from '@evenrealities/even_hub_sdk';
-import { glanceText, MENU, PRESET_CLUES, listenText, thinkText, confirmText } from './view.js';
+import { glanceText, MENU, PRESET_CLUES, listenText, thinkText, confirmText, isOk, okText } from './view.js';
 
 const SERVER = localStorage.getItem('callout.server') || 'http://localhost:8787';
 const state = { mode: 'glance', screen: '', pending: null, token: null, sync: null, syncedAt: 0, flash: '', device: {}, lastReply: '' };
@@ -48,17 +48,46 @@ async function startTalk() {
   }, 500);
 }
 
+function joinFrames() {
+  const pcm = new Uint8Array(voice.frames.reduce((n, f) => n + f.length, 0));
+  let at = 0;
+  for (const f of voice.frames) { pcm.set(f, at); at += f.length; }
+  return pcm;
+}
+
+// ---- spoken OK: when a check-in is overdue the mic opens for three short rounds ----
+// Nothing listens in the background. The window opens once per due check-in, and only while the app is showing.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const ok = { run: 0 };
+async function okWindow() {
+  if (state.mode !== 'glance' || !state.token) return;
+  state.mode = 'ok'; const mine = ++ok.run;
+  try {
+    for (let round = 1; round <= 3 && state.mode === 'ok' && ok.run === mine; round++) {
+      voice.frames = []; setScreen(okText(round));
+      if (!(await bridge.audioControl(true, AudioInputSource.Glasses))) break;
+      await sleep(3000);
+      await bridge.audioControl(false);
+      if (state.mode !== 'ok' || ok.run !== mine) return;
+      const { text } = await api('/api/voice', { audio: toBase64(joinFrames()) }).catch(() => ({ text: '' }));
+      if (ok.run === mine && isOk(text)) { state.mode = 'glance'; await checkIn(); return; }
+    }
+  } finally { if (ok.run === mine && state.mode === 'ok') { state.mode = 'glance'; paint(); } }
+}
+function dueMs() { return state.sync ? state.sync.dueInMs - (Date.now() - state.syncedAt) : 1; }
+function watchDue() {
+  if (state.mode !== 'glance' || !state.token || !state.sync) return;
+  if (dueMs() > 0) state.okTried = false;
+  else if (!state.okTried) { state.okTried = true; okWindow(); }
+}
+
 async function stopTalk() {
   if (state.mode !== 'listen') return;
   clearInterval(voice.timer);
   state.mode = 'think'; setScreen(thinkText());
   await bridge.audioControl(false);
-  const total = voice.frames.reduce((n, f) => n + f.length, 0);
-  const pcm = new Uint8Array(total);
-  let at = 0;
-  for (const f of voice.frames) { pcm.set(f, at); at += f.length; }
   try {
-    const { text } = await api('/api/voice', { audio: toBase64(pcm) });
+    const { text } = await api('/api/voice', { audio: toBase64(joinFrames()) });
     if (!text) return cancelClue('Heard nothing. Try again');
     if (/^cancel[.!]?$/i.test(text.trim())) return cancelClue('Cancelled');
     showConfirm(text);
@@ -109,7 +138,7 @@ async function sendPending() {
   if (text) await sendClue(text);
 }
 function cancelClue(msg) {
-  clearInterval(voice.timer); state.pending = null; state.mode = 'glance';
+  ok.run += 1; clearInterval(voice.timer); state.pending = null; state.mode = 'glance';
   bridge.audioControl(false).catch(() => {});
   if (msg) flash(msg); else paint();
 }
@@ -147,8 +176,8 @@ async function sync() {
     state.sync = await api('/api/sync', { pos: await pos() });
     state.syncedAt = Date.now();
     if (state.sync.replies?.length) {
-      state.lastReply = state.sync.replies.at(-1).text;
-      flash(`Reply: ${state.lastReply}`, 8000);
+      state.lastReply = state.sync.replies.at(-1).full || state.sync.replies.at(-1).text;
+      flash(`Reply: ${state.sync.replies.at(-1).text}`, 8000);
     }
     paint();
   } catch { /* offline: keep the last screen. The server notices if we stay silent. */ }
@@ -194,7 +223,7 @@ async function onMenu(id) {
 function onEvent(e) {
   if (e.audioEvent) {
     // Self-speech filter: keep the wearer's voice, drop frames the app classes as someone else.
-    if (state.mode === 'listen' && e.audioEvent.speakerRole !== AudioSpeakerRole.Other) voice.frames.push(e.audioEvent.audioPcm);
+    if ((state.mode === 'listen' || state.mode === 'ok') && e.audioEvent.speakerRole !== AudioSpeakerRole.Other) voice.frames.push(e.audioEvent.audioPcm);
     return;
   }
   if (e.menuItemClickEvent) return onMenu(e.menuItemClickEvent.itemID);
@@ -207,6 +236,7 @@ function onEvent(e) {
   const swipe = t === OsEventTypeList.SCROLL_TOP_EVENT || t === OsEventTypeList.SCROLL_BOTTOM_EVENT;
   if (t === OsEventTypeList.FOREGROUND_ENTER_EVENT) { sync(); heartbeat(); return; }
   if (state.mode === 'listen') { if (click) stopTalk(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
+  if (state.mode === 'ok') { if (click) { cancelClue(''); checkIn(); } else if (swipe || dbl) cancelClue('Skipped'); return; }
   if (state.mode === 'confirm') { if (click) sendPending(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
   if (state.mode === 'think') return;
   if (state.mode === 'presets') {
@@ -227,12 +257,20 @@ async function start() {
   const res = await bridge.createStartUpPageContainer(TEXT_PAGE());
   if (res !== StartUpPageCreateResult.success) console.warn('startup page', res);
   bridge.onEvenHubEvent(onEvent);
-  bridge.onDeviceStatusChanged((s) => { state.device = s; if (s.connectType === DeviceConnectType.Connected) heartbeat(); });
+  bridge.onDeviceStatusChanged((s) => {
+    const before = state.device || {};
+    state.device = s;
+    // Tell the server at once when the glasses are put down, taken off, or the battery drops low.
+    const worn = before.isWearing !== s.isWearing || before.isCharging !== s.isCharging || before.isInCase !== s.isInCase;
+    const lowNow = typeof s.batteryLevel === 'number' && s.batteryLevel <= 15 && !(typeof before.batteryLevel === 'number' && before.batteryLevel <= 15);
+    if (s.connectType === DeviceConnectType.Connected || worn || lowNow) heartbeat();
+    paint();
+  });
   window.callout = { pair, sync, checkIn };
   // Local testing: open the page with ?code=XXXX to pair without typing.
   const urlCode = new URLSearchParams(location.search).get('code');
   if (urlCode && !state.token) await pair(urlCode.toUpperCase()).catch(() => {});
-  setInterval(paint, 1000); setInterval(sync, 5000); setInterval(heartbeat, 30000);
+  setInterval(() => { paint(); watchDue(); }, 1000); setInterval(sync, 5000); setInterval(heartbeat, 30000);
   sync();
 }
 start();

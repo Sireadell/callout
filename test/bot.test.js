@@ -255,3 +255,71 @@ test('in a forum group each run gets a topic that is closed at the debrief; else
   const plain = await paired();
   assert.equal(plain.tg.out.some((m) => m.extra?.message_thread_id), false);
 });
+
+// ---- AI summary line, sheet in and out ----
+const fakeAi = { enabled: true, oneLine: async (t) => `SHORT:${t.slice(0, 10)}`, debrief: async () => 'One clue, nobody missed a check-in.' };
+const fakeSheet = (calls = []) => ({
+  email: 'robot@x.iam', calls,
+  readVolunteers: async () => [{ name: 'Ana', area: 'A1' }, { name: 'Ben', area: 'B2' }],
+  writeDebrief: async (id, d, s) => { calls.push([id, d.run, s]); return { people: d.volunteers.length, clues: d.clues.length }; },
+});
+function setupExtra() {
+  const s = setup();
+  s.sheetCalls = [];
+  s.bot = makeBot({ engine: s.engine, telegram: s.tg, router: s.router, ai: fakeAi, sheet: fakeSheet(s.sheetCalls) });
+  return s;
+}
+const SHEET_ID = 'abcDEF1234567890abcDEF1234567890';
+
+test('a long coordinator line reaches the lens as one short line, full text kept', async () => {
+  const { bot, tg, engine } = setupExtra();
+  await bot.handle(msg('/team Wardens')); await bot.handle(msg('/run Elm Street')); await bot.handle(msg('/add Ana | Area A1'));
+  const { token } = engine.pair(lastCode(tg));
+  const long = 'Please walk north along the river path until you reach the old stone bridge';
+  await bot.handle(msg(`/reply Ana ${long}`));
+  const r = engine.sync(token).replies[0];
+  assert.equal(r.text, 'SHORT:Please wal');
+  assert.equal(r.full, long);
+});
+
+test('short lines are left as typed', async () => {
+  const { bot, tg, engine } = setupExtra();
+  await bot.handle(msg('/team Wardens')); await bot.handle(msg('/run Elm Street')); await bot.handle(msg('/add Ana | Area A1'));
+  const { token } = engine.pair(lastCode(tg));
+  await bot.handle(msg('/reply Ana Return to base'));
+  assert.equal(engine.sync(token).replies[0].text, 'Return to base');
+});
+
+test('/sheet then /import adds everyone from the sheet with codes', async () => {
+  const { bot, tg, engine } = setupExtra();
+  await bot.handle(msg('/team Wardens')); await bot.handle(msg('/run Elm Street'));
+  await bot.handle(msg('/sheet nonsense'));
+  assert.ok(tg.out.some((m) => /robot@x.iam/.test(m.text || "")));
+  await bot.handle(msg('/import'));
+  assert.ok(tg.out.some((m) => /Connect a sheet first/.test(m.text || '')));
+  await bot.handle(msg(`/sheet https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`));
+  await bot.handle(msg('/import'));
+  const t = tg.out.at(-1).text;
+  assert.match(t, /Added 2/); assert.match(t, /Ana \(A1\): [A-Z0-9]{10}/); assert.match(t, /Ben \(B2\)/);
+  const run = engine.activeRun(Object.keys(engine.teams)[0]);
+  assert.equal(Object.keys(run.volunteers).length, 2);
+});
+
+test('/end posts the summary, writes the sheet and closes the topic last', async () => {
+  const { bot, tg, engine, sheetCalls } = setupExtra();
+  fakeForum.on = true; fakeForum.closed.length = 0;
+  await bot.handle(msg('/team Wardens')); await bot.handle(msg('/run Elm Street')); await bot.handle(msg('/add Ana | Area A1'));
+  const { token } = engine.pair(lastCode(tg));
+  engine.clue(token, { text: 'House empty' });
+  await bot.handle(msg(`/sheet ${SHEET_ID}`));
+  tg.out.length = 0;
+  await bot.handle(msg('/end'));
+  await new Promise((r) => setImmediate(r));
+  const texts = tg.out.map((m) => m.text || '');
+  assert.ok(texts.some((x) => /finished after/.test(x)));
+  assert.ok(texts.some((x) => x === 'Summary: One clue, nobody missed a check-in.'));
+  assert.ok(texts.some((x) => /Debrief written to your sheet \(1 people, 1 clues\)/.test(x)));
+  assert.deepEqual(sheetCalls[0], [SHEET_ID, 'Elm Street', 'One clue, nobody missed a check-in.']);
+  assert.equal(fakeForum.closed.length, 1);
+  fakeForum.on = false;
+});

@@ -27,6 +27,9 @@ export function glanceText(state, now = Date.now()) {
     const ok = team.filter((t) => t.state === 'ok' || t.status === 'ok').length;
     lines.push(`Team ${ok}/${team.length} checked in`);
   }
+  const d = state.device || {};
+  if (typeof d.batteryLevel === 'number' && d.batteryLevel <= 15 && !d.isCharging) lines.push('', `▲ Glasses battery ${d.batteryLevel}%`);
+  else if (now - state.syncedAt > 20000) lines.push('', '○ No signal. Will retry.');
   if (state.flash) lines.push('', state.flash);
   else if (s.replies?.length) lines.push('', `Reply: ${s.replies.at(-1).text}`);
   else lines.push('', 'Tap = check in. Double tap = exit.');
@@ -50,3 +53,11 @@ export const listenText = (secs) => ['● Listening', '', 'Say your clue.', `${s
 export const thinkText = () => ['Got it.', '', 'Turning it into text...'].join('\n');
 export const confirmText = (text, secs) => ['Your clue:', '', `"${String(text).slice(0, 300)}"`, '', `Sending in ${secs}s.`, 'Tap = send now. Swipe or say "cancel".'].join('\n');
 
+
+// The "say OK" window opens when a check-in is overdue. Short answers only, so chatter does not count.
+export function isOk(text) {
+  const t = String(text || '').trim();
+  if (!t || t.split(/\s+/).length > 5) return false;
+  return /\b(ok|okay|here|checking in|check in|all good|fine|yes)\b/i.test(t.replace(/\./g, ''));
+}
+export const okText = (round) => ['▲ Check-in due', '', 'Say "OK" or tap.', `Listening ${round} of 3. Swipe to skip.`].join('\n');

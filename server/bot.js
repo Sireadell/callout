@@ -1,6 +1,7 @@
 // Telegram bot commands and buttons. Works with privacy mode on: commands,
 // replies to the bot's messages and button presses all reach the bot.
 import { PRESETS, boardText } from './router.js';
+import { parseSheetId } from './sheet.js';
 
 const HELP = [
   'Callout team check-in bot.',
@@ -9,6 +10,8 @@ const HELP = [
   '/add <name> | <area>  add a volunteer, get a pairing code for the glasses app',
   '/status  show who is due or overdue',
   '/reply <name> <text>  send a line to a volunteer\'s lens (or reply to their clue)',
+  '/sheet <link>  connect a Google Sheet (tab Volunteers: name, area)',
+  '/import  add every volunteer listed in the sheet',
   '/end  finish the run and post the debrief',
   'Team notices only. This is not an emergency service.',
 ].join('\n');
@@ -25,12 +28,13 @@ export const COMMANDS = {
   coordinator: [
     { command: 'team', description: 'Make this group a team' }, { command: 'run', description: 'Start a run' },
     { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' },
-    { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'end', description: 'Finish the run' },
+    { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
+    { command: 'end', description: 'Finish the run' },
     { command: 'coordinator', description: 'Send private notices to me' }, { command: 'help', description: 'List the commands' },
   ],
 };
 
-export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', onDebrief = async () => {} }) {
+export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', ai = null, sheet = null }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
 
   async function onMessage(m) {
@@ -79,16 +83,43 @@ ${ADMIN_LINK(botUsername)}`);
     if (name === 'reply') {
       const v = Object.values(run.volunteers).find((x) => arg.toLowerCase().startsWith(x.name.toLowerCase() + ' '));
       if (!v) return say(chatId, 'Use: /reply <volunteer name> <text>');
-      engine.reply(run.id, { volunteerId: v.id, text: arg.slice(v.name.length + 1), by: m.from.first_name || 'coordinator' });
+      await lensReply(run, v.id, arg.slice(v.name.length + 1), m.from.first_name || 'coordinator');
       return say(chatId, `Sent to ${v.name}'s lens.`);
+    }
+    if (name === 'sheet') {
+      if (!sheet) return say(chatId, 'Google Sheet is not set up on this server.');
+      const id = parseSheetId(arg);
+      if (!id) return say(chatId, `Use: /sheet <link to your sheet>. Share the sheet with ${sheet.email || 'the Callout account'} first (Editor).`);
+      team.sheetId = id;
+      return say(chatId, 'Sheet connected. Put names in tab Volunteers (column A name, column B area), then send /import. The debrief is written to tabs Debrief and Clues when the run ends.');
+    }
+    if (name === 'import') {
+      if (!sheet || !team.sheetId) return say(chatId, 'Connect a sheet first with /sheet <link>.');
+      let list;
+      try { list = await sheet.readVolunteers(team.sheetId); } catch (e) { return say(chatId, `Could not read the sheet: ${e.message}`); }
+      if (!list.length) return say(chatId, 'No volunteers found. Use tab Volunteers, name in column A, area in column B.');
+      const lines = list.map(({ name: n, area }) => `${n} (${area}): ${engine.addVolunteer(run.id, { name: n, area }).code}`);
+      return say(chatId, `Added ${list.length}. Each person enters their code in the glasses app within 15 minutes, once only:\n${lines.join('\n')}`);
     }
     if (name === 'end') {
       const debrief = engine.endRun(run.id);
       await router.updateBoard(run.id);
-      await onDebrief(debrief, team);
+      const summary = ai ? await ai.debrief(debrief) : '';
+      if (summary) engine.announce(run.id, 'team', 'summary', `Summary: ${summary}`);
+      if (sheet && team.sheetId) {
+        try { const r = await sheet.writeDebrief(team.sheetId, debrief, summary); await say(chatId, `Debrief written to your sheet (${r.people} people, ${r.clues} clues).`, { disable_notification: true }); }
+        catch (e) { await say(chatId, `Could not write to the sheet: ${e.message}`); }
+      }
+      engine.announce(run.id, 'team', 'run_closed', '');
       return;
     }
     return say(chatId, HELP);
+  }
+
+  // A coordinator line for the lens. Long ones get a one-line version on the lens; the full text stays under Repeat reply.
+  async function lensReply(run, volunteerId, text, by) {
+    const short = ai?.enabled && text.length > 60 ? await ai.oneLine(text) : undefined;
+    return engine.reply(run.id, { volunteerId, text, by, short });
   }
 
   // The volunteer opens t.me/<bot>?start=<code>. A bot cannot message anyone first, so this
@@ -129,7 +160,7 @@ ${ADMIN_LINK(botUsername)}`);
     const run = team && engine.activeRun(team.id);
     const volId = run?.msgIndex?.[`${m.chat.id}:${ref.message_id}`];
     if (!volId) return;
-    engine.reply(run.id, { volunteerId: volId, text: m.text, by: m.from.first_name || 'coordinator' });
+    await lensReply(run, volId, m.text, m.from.first_name || 'coordinator');
     return say(m.chat.id, `Sent to ${run.volunteers[volId].name}'s lens.`, { reply_to_message_id: m.message_id });
   }
 
