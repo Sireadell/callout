@@ -35,6 +35,16 @@ export function glanceText(state, now = Date.now()) {
 
 export const MENU = [
   { itemID: 1, itemName: 'Check in' },
-  { itemID: 2, itemName: 'Repeat reply' },
-  { itemID: 3, itemName: 'End run' },
+  { itemID: 2, itemName: 'Clue by voice' },
+  { itemID: 3, itemName: 'Quick clue' },
+  { itemID: 4, itemName: 'Repeat reply' },
+  { itemID: 5, itemName: 'End run' },
 ];
+
+// One tap each, no typing. Short so they fit on the lens.
+export const PRESET_CLUES = ['House empty', 'Person inside', 'Road blocked', 'Need boat'];
+
+export const listenText = (secs) => ['● Listening', '', 'Say your clue.', `${secs}s left. Tap when done.`, 'Swipe to cancel.'].join('\n');
+export const thinkText = () => ['Got it.', '', 'Turning it into text...'].join('\n');
+export const confirmText = (text, secs) => ['Your clue:', '', `"${String(text).slice(0, 300)}"`, '', `Sending in ${secs}s.`, 'Tap = send now. Swipe or say "cancel".'].join('\n');
+

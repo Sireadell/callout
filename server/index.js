@@ -6,6 +6,7 @@ import { Telegram } from './telegram.js';
 import { Discord } from './discord.js';
 import { makeRouter } from './router.js';
 import { makeBot } from './bot.js';
+import { makeStt } from './stt.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const PORT = Number(process.env.PORT || 8787);
@@ -34,15 +35,16 @@ setInterval(() => { engine.tick(); Object.keys(engine.runs).forEach((id) => engi
 // ---- very small request helpers ----
 const hits = new Map();
 const limited = (ip) => { const m = Math.floor(Date.now() / 60000); const k = `${ip}:${m}`; hits.set(k, (hits.get(k) || 0) + 1); if (hits.size > 5000) hits.clear(); return hits.get(k) > 240; };
-function body(req) {
+function body(req, cap = 64 * 1024) {
   return new Promise((resolve, reject) => {
     let n = 0; const chunks = [];
-    req.on('data', (c) => { n += c.length; if (n > 64 * 1024) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
+    req.on('data', (c) => { n += c.length; if (n > cap) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
     req.on('end', () => { try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks)) : {}); } catch { reject(new Error('bad json')); } });
   });
 }
 const send = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST,OPTIONS' }); res.end(JSON.stringify(obj)); };
 
+const stt = makeStt({ apiKey: process.env.ASSEMBLYAI_API_KEY });
 const routes = {
   'POST /api/pair': (b) => engine.pair(b.code),
   'POST /api/checkin': (b) => engine.checkIn(b.token, { pos: b.pos }),
@@ -50,6 +52,12 @@ const routes = {
   'POST /api/clue': (b) => { const c = engine.clue(b.token, b); return { id: c.id }; },
   'POST /api/confirm': (b) => { engine.confirmReply(b.token, b.replyId); return { ok: true }; },
   'POST /api/sync': (b) => engine.sync(b.token, { pos: b.pos }),
+  // Audio from the glasses: base64 of raw 16 kHz 16 bit mono. Returns the words, nothing is stored.
+  'POST /api/voice': async (b) => {
+    engine.sync(b.token); // checks the token
+    if (!process.env.ASSEMBLYAI_API_KEY && process.env.CALLOUT_DEV === '1') return { text: b.devText || 'Person inside' }; // dev stub, labelled in the video
+    return { text: await stt.transcribe(Buffer.from(String(b.audio || ''), 'base64')) };
+  },
   'GET /healthz': () => ({ ok: true }),
 };
 // Local testing only: makes a team, a run and one volunteer and returns the pairing code.
@@ -76,7 +84,7 @@ const server = http.createServer(async (req, res) => {
     }
     const fn = routes[`${req.method} ${url.pathname}`];
     if (!fn) return send(res, 404, { error: 'not found' });
-    send(res, 200, fn(req.method === 'POST' ? await body(req) : {}));
+    send(res, 200, await fn(req.method === 'POST' ? await body(req, url.pathname === '/api/voice' ? 512 * 1024 : undefined) : {}));
   } catch (e) {
     send(res, 400, { error: e.message });
   }
