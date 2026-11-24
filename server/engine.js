@@ -209,7 +209,7 @@ export class Engine {
     };
     run.status = 'ended';
     this._emit(run, 'team', 'debrief', this.debriefText(debrief));
-    for (const v of Object.values(run.volunteers)) { v.pos = null; v.trail = []; }
+    for (const v of Object.values(run.volunteers)) { v.pos = null; v.trail = []; v.tgChatId = null; }
     run.clues.forEach((c) => { c.pos = null; });
     for (const [t, ref] of Object.entries(this.tokens)) if (ref.runId === run.id) delete this.tokens[t];
     return debrief;

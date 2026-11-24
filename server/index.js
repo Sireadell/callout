@@ -17,7 +17,7 @@ const engine = new Engine();
 const router = makeRouter({ engine, telegram, discord });
 engine.notify = router.notify;
 if (fs.existsSync(STATE)) engine.restore(JSON.parse(fs.readFileSync(STATE, 'utf8')));
-const bot = telegram ? makeBot({ engine, telegram, router }) : null;
+let bot = null;
 
 // Save to disk every few seconds when something changed.
 let lastSaved = '';
@@ -92,7 +92,17 @@ async function poll() {
   }
 }
 
+async function startTelegram() {
+  const me = await telegram.getMe();
+  bot = makeBot({ engine, telegram, router, botUsername: me.username });
+  await bot.register().catch((e) => console.error('commands:', e.message));
+  if (process.env.TELEGRAM_WEBHOOK_SECRET && process.env.PUBLIC_URL) {
+    await telegram.setWebhook(`${process.env.PUBLIC_URL}/telegram/webhook`, process.env.TELEGRAM_WEBHOOK_SECRET);
+    console.log('Telegram: webhook set');
+  } else { await telegram.call('deleteWebhook'); console.log('Telegram: polling'); poll(); }
+}
+
 server.listen(PORT, () => {
   console.log(`Callout server on :${PORT}`);
-  if (telegram && !process.env.TELEGRAM_WEBHOOK_SECRET) { console.log('Telegram: polling'); poll(); }
+  if (telegram) startTelegram().catch((e) => console.error('telegram start failed:', e.message));
 });

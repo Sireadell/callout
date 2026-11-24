@@ -48,6 +48,13 @@ export class Telegram {
   pin(chatId, messageId) {
     return this.call('pinChatMessage', { chat_id: chatId, message_id: messageId, disable_notification: true });
   }
+  getMe() { return this.call('getMe'); }
+  // Commands shown in the "/" menu, per audience (scope), so volunteers and coordinators see different lists.
+  setMyCommands(commands, scope = { type: 'default' }) { return this.call('setMyCommands', { commands, scope }); }
+  // Webhook with a secret header: Telegram sends it back on every update and the server checks it.
+  setWebhook(url, secret) {
+    return this.call('setWebhook', { url, secret_token: secret, allowed_updates: ['message', 'callback_query', 'my_chat_member'] });
+  }
   answerCallback(id, text) { return this.call('answerCallbackQuery', { callback_query_id: id, text }); }
   getUpdates(offset, timeout = 25) {
     return this.call('getUpdates', { offset, timeout, allowed_updates: ['message', 'callback_query', 'my_chat_member'] });

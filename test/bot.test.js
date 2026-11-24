@@ -17,6 +17,9 @@ function fakeTelegram() {
 }
 const msg = (text, extra = {}) => ({ message: { chat: { id: -500, type: 'supergroup', title: 'Wardens' }, from: { id: 7, first_name: 'Sam' }, text, message_id: 1, ...extra } });
 
+// The pairing code sits on its own line in the reply to /add.
+const codeIn = (m) => m.text.match(/\n([A-Z0-9]{10})\n/)[1];
+
 function setup() {
   const clock = { t: 5_000_000, now() { return this.t; }, advance(ms) { this.t += ms; } };
   const tg = fakeTelegram();
@@ -32,7 +35,7 @@ test('team, run and add give a pairing code in the group', async () => {
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const code = tg.out.at(-1).text.match(/\n([A-Z0-9]{10})$/)[1];
+  const code = codeIn(tg.out.at(-1));
   const joined = engine.pair(code);
   assert.equal(joined.name, 'Ana');
 });
@@ -42,7 +45,7 @@ test('a clue shows reply buttons; pressing one puts the line on the lens', async
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const { token } = engine.pair(tg.out.at(-1).text.match(/\n([A-Z0-9]{10})$/)[1]);
+  const { token } = engine.pair(codeIn(tg.out.at(-1)));
   engine.clue(token, { text: 'Person inside', pos: { lat: 1, lng: 2 } });
   await new Promise((r) => setImmediate(r));
   const clueMsg = tg.out.filter((m) => m.text?.includes('Person inside')).at(-1);
@@ -58,7 +61,7 @@ test('replying to a clue message sends that text to the volunteer', async () => 
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const { token } = engine.pair(tg.out.at(-1).text.match(/\n([A-Z0-9]{10})$/)[1]);
+  const { token } = engine.pair(codeIn(tg.out.at(-1)));
   engine.clue(token, { text: 'Road blocked' });
   await new Promise((r) => setImmediate(r));
   const clueMsg = tg.out.filter((m) => m.text?.includes('Road blocked')).at(-1);
@@ -71,7 +74,7 @@ test('button presses from other chats are refused', async () => {
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const { token, runId } = engine.pair(tg.out.at(-1).text.match(/\n([A-Z0-9]{10})$/)[1]);
+  const { token, runId } = engine.pair(codeIn(tg.out.at(-1)));
   const volId = Object.keys(engine.runs[runId].volunteers)[0];
   await bot.handle({ callback_query: { id: 'q2', data: `r|${volId}|0`, from: {}, message: { chat: { id: -999 } } } });
   assert.equal(tg.answers.at(-1)[1], 'Not available');
@@ -83,7 +86,7 @@ test('the status board is pinned once, then edited in place', async () => {
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const { token, runId } = engine.pair(tg.out.at(-1).text.match(/\n([A-Z0-9]{10})$/)[1]);
+  const { token, runId } = engine.pair(codeIn(tg.out.at(-1)));
   await new Promise((r) => setImmediate(r));
   clock.advance(60_000);
   engine.checkIn(token);
@@ -100,4 +103,60 @@ test('the board and notices never claim to be an emergency service', async () =>
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/status'));
   assert.match(tg.out.at(-1).text, /Not an emergency service/);
+});
+
+const priv = (text, extra = {}) => ({ message: { chat: { id: 77, type: 'private' }, from: { id: 77, first_name: 'Ana' }, text, message_id: 2, ...extra } });
+
+test('the private start link ties the volunteer to their chat, and the code still works on the glasses', async () => {
+  const { bot, tg, engine } = setup();
+  await bot.handle(msg('/team Wardens'));
+  await bot.handle(msg('/run Elm Street'));
+  await bot.handle(msg('/add Ana | Area A1'));
+  const code = codeIn(tg.out.at(-1));
+  await bot.handle(priv(`/start ${code}`));
+  assert.match(tg.out.at(-1).text, /Linked: Ana/);
+  assert.equal(tg.out.at(-1).chat, 77);
+  assert.equal(engine.pair(code).name, 'Ana');
+});
+
+test('a used or made-up start link is refused', async () => {
+  const { bot, tg } = setup();
+  await bot.handle(priv('/start NOTACODE123'));
+  assert.match(tg.out.at(-1).text, /not valid/);
+});
+
+test('plain start in private gives the add-to-group link with admin rights', async () => {
+  const { bot, tg } = setup();
+  await bot.handle(priv('/start'));
+  assert.match(tg.out.at(-1).text, /startgroup=setup&admin=pin_messages\+manage_topics/);
+});
+
+test('adding the bot as a plain member asks for admin; missing rights are named', async () => {
+  const { bot, tg } = setup();
+  const upd = (nm) => ({ my_chat_member: { chat: { id: -500, type: 'supergroup' }, new_chat_member: nm } });
+  await bot.handle(upd({ status: 'member' }));
+  assert.match(tg.out.at(-1).text, /not an admin/);
+  await bot.handle(upd({ status: 'administrator', can_pin_messages: true, can_manage_topics: false }));
+  assert.match(tg.out.at(-1).text, /make one topic per run/);
+  await bot.handle(upd({ status: 'administrator', can_pin_messages: true, can_manage_topics: true }));
+  assert.match(tg.out.at(-1).text, /All set/);
+});
+
+test('missed check-in buzzes, a clue is quiet, and positions are protected', async () => {
+  const { bot, tg, engine, clock } = setup();
+  await bot.handle(msg('/team Wardens'));
+  await bot.handle(msg('/run Elm Street'));
+  await bot.handle(msg('/add Ana | Area A1'));
+  const { token } = engine.pair(codeIn(tg.out.at(-1)));
+  engine.checkIn(token);
+  engine.clue(token, { text: 'Road blocked', pos: { lat: 1, lng: 2 } });
+  await new Promise((r) => setImmediate(r));
+  const clue = tg.out.filter((m) => m.text?.includes('Road blocked')).at(-1);
+  assert.equal(clue.extra.disable_notification, true);
+  assert.equal(clue.extra.protect_content, true);
+  clock.advance(18 * 60_000);
+  engine.tick();
+  await new Promise((r) => setImmediate(r));
+  const missed = tg.out.filter((m) => /Missed check-in/.test(m.text || '')).at(-1);
+  assert.equal(missed.extra.disable_notification, false);
 });

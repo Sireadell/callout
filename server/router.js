@@ -1,6 +1,10 @@
 // Sends engine notices to the team's chat apps and keeps one pinned status
 // board per run, edited in place.
 const ICON = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '○' };
+// Loud notices buzz phones. Everything else arrives quietly.
+const LOUD = new Set(['missed_checkin', 'missed_checkin_team', 'went_silent']);
+// Notices that carry a position or a person's details cannot be forwarded or saved from the chat.
+const OPEN = new Set(['run_started', 'joined', 'debrief']);
 export const PRESETS = ['Stay where you are', 'Move to your next area', 'Return to base', 'Call me'];
 
 export function boardText(engine, runId) {
@@ -26,7 +30,11 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
   async function toTelegram(team, n) {
     const t = team.telegram;
     const chat = n.audience === 'coordinator' ? (t.coordinatorChatId ?? t.chatId) : t.chatId;
-    const sent = await telegram.send(chat, n.text, { reply_markup: keyboardFor(n) });
+    const sent = await telegram.send(chat, n.text, {
+      reply_markup: keyboardFor(n),
+      disable_notification: !LOUD.has(n.kind),
+      protect_content: !OPEN.has(n.kind),
+    });
     const run = engine.runs[n.runId];
     if (run && n.volunteerId) (run.msgIndex ||= {})[`${chat}:${sent.message_id}`] = n.volunteerId;
   }

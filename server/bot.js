@@ -13,7 +13,24 @@ const HELP = [
   'Team notices only. This is not an emergency service.',
 ].join('\n');
 
-export function makeBot({ engine, telegram, router, onDebrief = async () => {} }) {
+// What the bot needs as a group admin, and why.
+const RIGHTS = [
+  ['can_pin_messages', 'pin the status board'],
+  ['can_manage_topics', 'make one topic per run'],
+];
+const ADMIN_LINK = (bot) => `https://t.me/${bot}?startgroup=setup&admin=pin_messages+manage_topics`;
+
+export const COMMANDS = {
+  everyone: [{ command: 'start', description: 'How this works' }, { command: 'help', description: 'List the commands' }],
+  coordinator: [
+    { command: 'team', description: 'Make this group a team' }, { command: 'run', description: 'Start a run' },
+    { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' },
+    { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'end', description: 'Finish the run' },
+    { command: 'coordinator', description: 'Send private notices to me' }, { command: 'help', description: 'List the commands' },
+  ],
+};
+
+export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', onDebrief = async () => {} }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
 
   async function onMessage(m) {
@@ -24,6 +41,11 @@ export function makeBot({ engine, telegram, router, onDebrief = async () => {} }
     const [, name, arg] = cmd;
     const isGroup = m.chat.type === 'group' || m.chat.type === 'supergroup';
 
+    if (name === 'start' && !isGroup && arg) return linkVolunteer(m, arg.trim().toUpperCase());
+    if (name === 'start' && !isGroup) return say(chatId, `${HELP}
+
+To set up a team, add me to your group with the right permissions:
+${ADMIN_LINK(botUsername)}`);
     if (name === 'start' || name === 'help') return say(chatId, HELP);
     if (name === 'team') {
       if (!isGroup) return say(chatId, 'Run /team inside your team group, with this bot added.');
@@ -51,7 +73,7 @@ export function makeBot({ engine, telegram, router, onDebrief = async () => {} }
       const [vn, area] = arg.split('|').map((s) => s.trim());
       if (!vn || !area) return say(chatId, 'Use: /add <name> | <area>');
       const { code } = engine.addVolunteer(run.id, { name: vn, area });
-      return say(chatId, `${vn} (${area}): enter this code in the glasses app within 15 minutes, once only:\n${code}`);
+      return say(chatId, `${vn} (${area}): enter this code in the glasses app within 15 minutes, once only:\n${code}\n\nOptional: ${vn} can open https://t.me/${botUsername}?start=${code} to get private messages from me.`);
     }
     if (name === 'status') return say(chatId, boardText(engine, run.id));
     if (name === 'reply') {
@@ -67,6 +89,36 @@ export function makeBot({ engine, telegram, router, onDebrief = async () => {} }
       return;
     }
     return say(chatId, HELP);
+  }
+
+  // The volunteer opens t.me/<bot>?start=<code>. A bot cannot message anyone first, so this
+  // is the moment we learn where to reach them. The code stays valid for the glasses app.
+  async function linkVolunteer(m, code) {
+    const p = engine.pairings[code];
+    if (!p || p.used || engine.clock.now() > p.expiresAt) return say(m.chat.id, 'That link is not valid any more. Ask your coordinator for a new one.');
+    const { v } = engine.findVolunteer(p.volunteerId);
+    v.tgChatId = m.chat.id;
+    return say(m.chat.id, `Linked: ${v.name}, ${v.area}. I will only message you here about your own check-ins. Not an emergency service.`, { disable_notification: true });
+  }
+
+  // Runs when the bot is added to a group or its rights change.
+  async function onMyChatMember(u) {
+    const chat = u.chat;
+    if (chat.type !== 'group' && chat.type !== 'supergroup') return;
+    const n = u.new_chat_member;
+    if (!n || n.status === 'left' || n.status === 'kicked') return;
+    if (n.status !== 'administrator') {
+      return say(chat.id, `I am not an admin yet, so I cannot pin the status board or make topics. Use this link to add me with the right permissions: ${ADMIN_LINK(botUsername)}`);
+    }
+    const missing = RIGHTS.filter(([k]) => !n[k]).map(([, why]) => why);
+    if (missing.length) return say(chat.id, `I am an admin but cannot: ${missing.join(', ')}. Please turn those permissions on.`);
+    return say(chat.id, 'All set. Send /team <name> to make this group a team.', { disable_notification: true });
+  }
+
+  // Two command lists: a short one for everyone, the full one for group admins.
+  async function register() {
+    await telegram.setMyCommands(COMMANDS.everyone);
+    await telegram.setMyCommands(COMMANDS.coordinator, { type: 'all_chat_administrators' });
   }
 
   // A plain reply to one of the bot's clue or notice messages goes to that volunteer.
@@ -100,7 +152,8 @@ export function makeBot({ engine, telegram, router, onDebrief = async () => {} }
   async function handle(update) {
     if (update.message) return onMessage(update.message);
     if (update.callback_query) return onCallback(update.callback_query);
+    if (update.my_chat_member) return onMyChatMember(update.my_chat_member);
   }
 
-  return { handle };
+  return { handle, register };
 }
