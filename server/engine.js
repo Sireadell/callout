@@ -94,7 +94,7 @@ export class Engine {
     return { nextDueAt: v.lastCheckin + this.cfg.checkinMs };
   }
 
-  heartbeat(token, { battery, charging, inCase, worn, pos } = {}) {
+  heartbeat(token, { battery, charging, inCase, worn, still, pos } = {}) {
     const { run, v } = this._auth(token);
     const wasSilent = v.flags.silent;
     this._touch(v, pos);
@@ -114,6 +114,10 @@ export class Engine {
         this._emit(run, 'coordinator', 'glasses_off', `${v.name} (${v.area}) has taken the glasses off. Last position: ${place(v.pos)}.`, { volunteerId: v.id });
       } else if (!off) v.flags.off = false;
     }
+    if (still === true && !v.flags.still && worn !== false) {
+      v.flags.still = true;
+      this._emit(run, 'coordinator', 'still', `${v.name} (${v.area}): no head movement was seen for a while and Still there? got no answer. This only means no movement was seen. Last position: ${place(v.pos)}.`, { volunteerId: v.id });
+    } else if (!still) v.flags.still = false;
   }
 
   clue(token, { text, pos, voiceNoteId = null, photoId = null }) {

@@ -167,3 +167,34 @@ test('a run can be saved and restored', () => {
   copy.restore(e.snapshot());
   assert.doesNotThrow(() => copy.checkIn(ana.token));
 });
+
+test('an unanswered "Still there?" is passed on once, as a plain fact, and clears on movement', () => {
+  const clock = { t: 1_000_000, now() { return this.t; } };
+  const notes = [];
+  const e = new Engine({ clock, notify: (n) => notes.push(n) });
+  const team = e.addTeam({ name: 'T' });
+  const run = e.startRun({ teamId: team.id, name: 'R' });
+  const { code } = e.addVolunteer(run.id, { name: 'Ana', area: 'A1' });
+  const { token } = e.pair(code);
+  e.heartbeat(token, { still: true, worn: true });
+  e.heartbeat(token, { still: true, worn: true });
+  const stills = notes.filter((n) => n.kind === 'still');
+  assert.equal(stills.length, 1);
+  assert.equal(stills[0].audience, 'coordinator');
+  assert.match(stills[0].text, /only means no movement was seen/);
+  assert.doesNotMatch(stills[0].text, /injur|unconscious|danger|emergency/i);
+  e.heartbeat(token, { still: false, worn: true });
+  e.heartbeat(token, { still: true, worn: true });
+  assert.equal(notes.filter((n) => n.kind === 'still').length, 2);
+});
+
+test('glasses off or in the case never produce a still notice', () => {
+  const e = new Engine({ clock: { now: () => 1_000_000 }, notify: () => {} });
+  const notes = []; e.notify = (n) => notes.push(n);
+  const team = e.addTeam({ name: 'T' });
+  const run = e.startRun({ teamId: team.id, name: 'R' });
+  const { code } = e.addVolunteer(run.id, { name: 'Ana', area: 'A1' });
+  const { token } = e.pair(code);
+  e.heartbeat(token, { still: true, worn: false });
+  assert.equal(notes.filter((n) => n.kind === 'still').length, 0);
+});

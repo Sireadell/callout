@@ -2,7 +2,7 @@
 // board per run, edited in place. Also keeps live locations and the run's topic.
 const ICON = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '○' };
 // Loud notices buzz phones. Everything else arrives quietly.
-const LOUD = new Set(['missed_checkin', 'missed_checkin_team', 'went_silent']);
+const LOUD = new Set(['missed_checkin', 'missed_checkin_team', 'went_silent', 'still']);
 // Notices that carry a position or a person's details cannot be forwarded or saved from the chat.
 const OPEN = new Set(['run_started', 'joined', 'debrief', 'summary']);
 export const PRESETS = ['Stay where you are', 'Move to your next area', 'Return to base', 'Call me'];

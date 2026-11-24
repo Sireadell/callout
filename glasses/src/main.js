@@ -1,5 +1,6 @@
-import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole } from '@evenrealities/even_hub_sdk';
-import { glanceText, MENU, PRESET_CLUES, listenText, thinkText, confirmText, isOk, okText } from './view.js';
+import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
+import { glanceText, MENU, PRESET_CLUES, listenText, thinkText, confirmText, isOk, okText, stillText } from './view.js';
+import { makeStillness } from './motion.js';
 
 const SERVER = localStorage.getItem('callout.server') || 'http://localhost:8787';
 const state = { mode: 'glance', screen: '', pending: null, token: null, sync: null, syncedAt: 0, flash: '', device: {}, lastReply: '' };
@@ -59,27 +60,40 @@ function joinFrames() {
 // ---- spoken OK: when a check-in is overdue the mic opens for three short rounds ----
 // Nothing listens in the background. The window opens once per due check-in, and only while the app is showing.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const ok = { run: 0 };
-async function okWindow() {
+const ok = { run: 0, kind: 'checkin' };
+const motion = makeStillness();
+async function okWindow(kind = 'checkin') {
   if (state.mode !== 'glance' || !state.token) return;
-  state.mode = 'ok'; const mine = ++ok.run;
+  state.mode = 'ok'; ok.kind = kind; const mine = ++ok.run;
+  let answered = false;
   try {
     for (let round = 1; round <= 3 && state.mode === 'ok' && ok.run === mine; round++) {
-      voice.frames = []; setScreen(okText(round));
+      voice.frames = []; setScreen(kind === 'still' ? stillText(round) : okText(round));
       if (!(await bridge.audioControl(true, AudioInputSource.Glasses))) break;
       await sleep(3000);
       await bridge.audioControl(false);
       if (state.mode !== 'ok' || ok.run !== mine) return;
       const { text } = await api('/api/voice', { audio: toBase64(joinFrames()) }).catch(() => ({ text: '' }));
-      if (ok.run === mine && isOk(text)) { state.mode = 'glance'; await checkIn(); return; }
+      if (ok.run === mine && isOk(text)) {
+        answered = true; state.mode = 'glance';
+        if (kind === 'still') { motion.reset(); state.stillUnanswered = false; flash('● Thanks'); } else await checkIn();
+        return;
+      }
     }
-  } finally { if (ok.run === mine && state.mode === 'ok') { state.mode = 'glance'; paint(); } }
+  } finally {
+    // A question that got no answer is passed on as a plain fact, never as a guess about the wearer.
+    if (kind === 'still' && !answered && ok.run === mine) { state.stillUnanswered = true; heartbeat(); } if (ok.run === mine && state.mode === 'ok') { state.mode = 'glance'; paint(); } }
 }
 function dueMs() { return state.sync ? state.sync.dueInMs - (Date.now() - state.syncedAt) : 1; }
 function watchDue() {
   if (state.mode !== 'glance' || !state.token || !state.sync) return;
   if (dueMs() > 0) state.okTried = false;
   else if (!state.okTried) { state.okTried = true; okWindow(); }
+  // No head movement for a while: ask once, then wait for movement before asking again.
+  if (state.mode === 'glance' && state.device?.isWearing !== false) {
+    if (!motion.isStill()) { state.stillAsked = false; state.stillUnanswered = false; }
+    else if (!state.stillAsked) { state.stillAsked = true; okWindow('still'); }
+  }
 }
 
 async function stopTalk() {
@@ -194,7 +208,7 @@ async function heartbeat() {
   if (!state.token) return;
   const d = state.device;
   try {
-    await api('/api/heartbeat', { battery: d.batteryLevel, charging: d.isCharging, inCase: d.isInCase, worn: d.isWearing, pos: await pos() });
+    await api('/api/heartbeat', { battery: d.batteryLevel, charging: d.isCharging, inCase: d.isInCase, worn: d.isWearing, still: state.stillUnanswered || undefined, pos: await pos() });
   } catch { /* ignore */ }
 }
 
@@ -222,6 +236,8 @@ async function onMenu(id) {
 }
 
 function onEvent(e) {
+  // Motion samples arrive as system events with no tap type. Handle them first so they never count as a tap.
+  if (e.sysEvent?.imuData) { motion.feed(e.sysEvent.imuData); return; }
   if (e.audioEvent) {
     // Self-speech filter: keep the wearer's voice, drop frames the app classes as someone else.
     if ((state.mode === 'listen' || state.mode === 'ok') && e.audioEvent.speakerRole !== AudioSpeakerRole.Other) voice.frames.push(e.audioEvent.audioPcm);
@@ -237,7 +253,7 @@ function onEvent(e) {
   const swipe = t === OsEventTypeList.SCROLL_TOP_EVENT || t === OsEventTypeList.SCROLL_BOTTOM_EVENT;
   if (t === OsEventTypeList.FOREGROUND_ENTER_EVENT) { sync(); heartbeat(); return; }
   if (state.mode === 'listen') { if (click) stopTalk(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
-  if (state.mode === 'ok') { if (click) { cancelClue(''); checkIn(); } else if (swipe || dbl) cancelClue('Skipped'); return; }
+  if (state.mode === 'ok') { if (click) { const still = ok.kind === 'still'; cancelClue(''); if (still) { motion.reset(); state.stillUnanswered = false; flash('● Thanks'); } else checkIn(); } else if (swipe || dbl) cancelClue('Skipped'); return; }
   if (state.mode === 'confirm') { if (click) sendPending(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
   if (state.mode === 'think') return;
   if (state.mode === 'presets') {
@@ -258,6 +274,7 @@ async function start() {
   const res = await bridge.createStartUpPageContainer(TEXT_PAGE());
   if (res !== StartUpPageCreateResult.success) console.warn('startup page', res);
   bridge.onEvenHubEvent(onEvent);
+  bridge.imuControl(true, ImuReportPace.P1000).catch(() => {}); // one sample a second is enough to see stillness
   bridge.onDeviceStatusChanged((s) => {
     const before = state.device || {};
     state.device = s;
@@ -296,6 +313,7 @@ if (new URLSearchParams(location.search).get('dev') === '1') {
   add('Battery 80% on charge', () => set({ batteryLevel: 80, isCharging: true }));
   add('Glasses off', () => set({ isWearing: false, isCharging: false, isInCase: false }));
   add('Glasses back on', () => set({ isWearing: true }));
+  add('Fake: no movement for 5 min', () => motion.forceStill());
   add('Go quiet (stop talking to server)', () => { window.__quiet = true; });
   add('Come back', () => { window.__quiet = false; sync(); heartbeat(); });
   document.body.append(box);

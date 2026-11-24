@@ -61,3 +61,4 @@ export function isOk(text) {
   return /\b(ok|okay|here|checking in|check in|all good|fine|yes)\b/i.test(t.replace(/\./g, ''));
 }
 export const okText = (round) => ['▲ Check-in due', '', 'Say "OK" or tap.', `Listening ${round} of 3. Swipe to skip.`].join('\n');
+export const stillText = (round) => ['Still there?', '', 'Say "OK" or tap.', `Listening ${round} of 3. Swipe to skip.`].join('\n');
