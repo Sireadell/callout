@@ -68,7 +68,9 @@ ${ADMIN_LINK(botUsername)}`);
     if (name === 'run') {
       if (engine.activeRun(team.id)) return say(chatId, 'A run is already active. Send /end first.');
       const run = engine.startRun({ teamId: team.id, name: arg || 'Run' });
-      return say(chatId, `Run "${run.name}" started. Add volunteers with /add <name> | <area>.`);
+      return say(chatId, `Run "${run.name}" started. Add volunteers with /add <name> | <area>.
+
+Everyone who joins agrees to share their position with this group while the run is active. Positions are deleted when the run ends.`);
     }
     const run = engine.activeRun(team.id);
     if (!run) return say(chatId, 'No active run. Start one with /run <name>.');
