@@ -85,10 +85,12 @@ export class Telegram {
   setMyCommands(commands, scope = { type: 'default' }) { return this.call('setMyCommands', { commands, scope }); }
   // Webhook with a secret header: Telegram sends it back on every update and the server checks it.
   setWebhook(url, secret) {
-    return this.call('setWebhook', { url, secret_token: secret, allowed_updates: ['message', 'callback_query', 'my_chat_member'] });
+    return this.call('setWebhook', { url, secret_token: secret, allowed_updates: ['message', 'callback_query', 'my_chat_member', 'message_reaction'] });
   }
+  // A small reaction on a message (thumbs up, OK hand). Cheaper and quieter than a reply line.
+  setReaction(chat, messageId, emoji) { return this.call('setMessageReaction', { chat_id: chat, message_id: messageId, reaction: [{ type: 'emoji', emoji }] }); }
   answerCallback(id, text) { return this.call('answerCallbackQuery', { callback_query_id: id, text }); }
   getUpdates(offset, timeout = 25) {
-    return this.call('getUpdates', { offset, timeout, allowed_updates: ['message', 'callback_query', 'my_chat_member'] });
+    return this.call('getUpdates', { offset, timeout, allowed_updates: ['message', 'callback_query', 'my_chat_member', 'message_reaction'] });
   }
 }

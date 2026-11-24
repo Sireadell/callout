@@ -323,3 +323,40 @@ test('/end posts the summary, writes the sheet and closes the topic last', async
   assert.equal(fakeForum.closed.length, 1);
   fakeForum.on = false;
 });
+
+// ---- reactions both ways ----
+test('a reply gets an OK reaction instead of a chat line; falls back to text if reactions fail', async () => {
+  const { bot, tg, engine } = setup();
+  const reacts = [];
+  tg.setReaction = async (chat, mid, emoji) => { reacts.push([chat, mid, emoji]); };
+  await bot.handle(msg('/team Wardens')); await bot.handle(msg('/run Elm Street')); await bot.handle(msg('/add Ana | Area A1'));
+  const { token } = engine.pair(lastCode(tg));
+  engine.clue(token, { text: 'Road blocked' });
+  await new Promise((r) => setImmediate(r));
+  const clueMsg = tg.out.filter((m) => m.text?.includes('Road blocked')).at(-1);
+  tg.out.length = 0;
+  await bot.handle(msg('Take the back lane', { message_id: 9, reply_to_message: { message_id: clueMsg.message_id } }));
+  assert.deepEqual(reacts, [[-500, 9, '\u{1F44C}']]);
+  assert.ok(!tg.out.some((m) => /Sent to/.test(m.text || '')));
+  tg.setReaction = async () => { throw new Error('reactions off'); };
+  await bot.handle(msg('Then wait', { message_id: 10, reply_to_message: { message_id: clueMsg.message_id } }));
+  assert.ok(tg.out.some((m) => /Sent to Ana/.test(m.text || '')));
+});
+
+test('a thumbs up on a clue puts Seen on the lens; other emoji and removals do nothing', async () => {
+  const { bot, tg, engine } = setup();
+  await bot.handle(msg('/team Wardens')); await bot.handle(msg('/run Elm Street')); await bot.handle(msg('/add Ana | Area A1'));
+  const { token } = engine.pair(lastCode(tg));
+  engine.clue(token, { text: 'House empty' });
+  await new Promise((r) => setImmediate(r));
+  const clueMsg = tg.out.filter((m) => m.text?.includes('House empty')).at(-1);
+  const react = (nw, old = []) => bot.handle({ message_reaction: { chat: { id: -500 }, message_id: clueMsg.message_id, user: { first_name: 'Sam' }, old_reaction: old, new_reaction: nw } });
+  await react([{ type: 'emoji', emoji: '\u{1F525}' }]);
+  assert.equal(engine.sync(token).replies.length, 0);
+  await react([{ type: 'emoji', emoji: '\u{1F44D}' }]);
+  assert.equal(engine.sync(token).replies[0].text, 'Seen');
+  await react([], [{ type: 'emoji', emoji: '\u{1F44D}' }]);
+  assert.equal(engine.sync(token).replies.length, 0);
+  await bot.handle({ message_reaction: { chat: { id: -500 }, message_id: 99999, new_reaction: [{ type: 'emoji', emoji: '\u{1F44D}' }] } });
+  assert.equal(engine.sync(token).replies.length, 0);
+});

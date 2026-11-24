@@ -84,7 +84,7 @@ ${ADMIN_LINK(botUsername)}`);
       const v = Object.values(run.volunteers).find((x) => arg.toLowerCase().startsWith(x.name.toLowerCase() + ' '));
       if (!v) return say(chatId, 'Use: /reply <volunteer name> <text>');
       await lensReply(run, v.id, arg.slice(v.name.length + 1), m.from.first_name || 'coordinator');
-      return say(chatId, `Sent to ${v.name}'s lens.`);
+      return ack(m, v);
     }
     if (name === 'sheet') {
       if (!sheet) return say(chatId, 'Google Sheet is not set up on this server.');
@@ -161,7 +161,27 @@ ${ADMIN_LINK(botUsername)}`);
     const volId = run?.msgIndex?.[`${m.chat.id}:${ref.message_id}`];
     if (!volId) return;
     await lensReply(run, volId, m.text, m.from.first_name || 'coordinator');
-    return say(m.chat.id, `Sent to ${run.volunteers[volId].name}'s lens.`, { reply_to_message_id: m.message_id });
+    return ack(m, run.volunteers[volId]);
+  }
+
+  // Confirms a line reached the lens queue: a small OK reaction on the coordinator's own message,
+  // or a short reply when reactions are not allowed in this chat.
+  async function ack(m, v) {
+    try { await telegram.setReaction(m.chat.id, m.message_id, '👌'); }
+    catch { await say(m.chat.id, `Sent to ${v.name}'s lens.`, { reply_to_message_id: m.message_id, disable_notification: true }); }
+  }
+
+  // A coordinator reacts to a clue or notice: thumbs up reads "Seen" on the lens, OK hand reads "OK", heart "Thanks".
+  const REACTIONS = { '👍': 'Seen', '👌': 'OK', '❤': 'Thanks', '❤️': 'Thanks' };
+  async function onReaction(u) {
+    const team = engine.teamByChat(u.chat.id);
+    const run = team && engine.activeRun(team.id);
+    const volId = run?.msgIndex?.[`${u.chat.id}:${u.message_id}`];
+    if (!volId) return;
+    const added = (u.new_reaction || []).filter((x) => x.type === 'emoji' && REACTIONS[x.emoji]);
+    const before = new Set((u.old_reaction || []).map((x) => x.emoji));
+    const fresh = added.find((x) => !before.has(x.emoji));
+    if (fresh) engine.reply(run.id, { volunteerId: volId, text: REACTIONS[fresh.emoji], by: u.user?.first_name || 'coordinator' });
   }
 
   async function onCallback(q) {
@@ -184,6 +204,7 @@ ${ADMIN_LINK(botUsername)}`);
     if (update.message) return onMessage(update.message);
     if (update.callback_query) return onCallback(update.callback_query);
     if (update.my_chat_member) return onMyChatMember(update.my_chat_member);
+    if (update.message_reaction) return onReaction(update.message_reaction);
   }
 
   return { handle, register };
