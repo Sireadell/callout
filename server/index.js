@@ -9,6 +9,7 @@ import { makeRouter } from './router.js';
 import { makeBot } from './bot.js';
 import { makeStt } from './stt.js';
 import { makeAi } from './ai.js';
+import { makeMiniApp } from './miniapp.js';
 import { makeSheet } from './sheet.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
@@ -58,6 +59,7 @@ function rawBody(req, cap = 64 * 1024) {
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
   });
 }
+const miniapp = process.env.TELEGRAM_BOT_TOKEN ? makeMiniApp({ engine, botToken: process.env.TELEGRAM_BOT_TOKEN, presets: PRESETS }) : null;
 const stt = makeStt({ apiKey: process.env.ASSEMBLYAI_API_KEY });
 const routes = {
   'POST /api/pair': (b) => engine.pair(b.code),
@@ -74,6 +76,8 @@ const routes = {
   },
   // A photo for a clue already sent: base64 JPEG, passed on to the chat and not kept.
   'POST /api/photo': (b) => engine.attachPhoto(b.token, { clueId: b.clueId, bytes: Buffer.from(String(b.image || ''), 'base64') }),
+  'POST /app/api/state': (b) => { if (!miniapp) throw new Error('not set up'); return miniapp.state(b.initData); },
+  'POST /app/api/reply': (b) => { if (!miniapp) throw new Error('not set up'); return miniapp.reply(b.initData, b); },
   'GET /healthz': () => ({ ok: true }),
 };
 // Local testing only: makes a team, a run and one volunteer and returns the pairing code.
@@ -103,6 +107,10 @@ const server = http.createServer(async (req, res) => {
       if (!process.env.DISCORD_PUBLIC_KEY || !verifyInteraction(process.env.DISCORD_PUBLIC_KEY, String(req.headers['x-signature-ed25519'] || ''), req.headers['x-signature-timestamp'], raw)) return send(res, 401, {});
       return send(res, 200, discordInteraction(JSON.parse(raw)));
     }
+    if (req.method === 'GET' && url.pathname === '/app') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      return res.end(fs.readFileSync(new URL('./public/app.html', import.meta.url)));
+    }
     const fn = routes[`${req.method} ${url.pathname}`];
     if (!fn) return send(res, 404, { error: 'not found' });
     send(res, 200, await fn(req.method === 'POST' ? await body(req, (url.pathname === '/api/voice' || url.pathname === '/api/photo') ? 900 * 1024 : undefined) : {}));
@@ -123,7 +131,7 @@ async function poll() {
 
 async function startTelegram() {
   const me = await telegram.getMe();
-  bot = makeBot({ engine, telegram, router, botUsername: me.username, ai, sheet, discordDefault: process.env.DISCORD_WEBHOOK_URL ? { webhookUrl: process.env.DISCORD_WEBHOOK_URL, channelId: process.env.DISCORD_CHANNEL_ID || null } : null });
+  bot = makeBot({ engine, telegram, router, botUsername: me.username, ai, sheet, appUrl: process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL}/app` : null, discordDefault: process.env.DISCORD_WEBHOOK_URL ? { webhookUrl: process.env.DISCORD_WEBHOOK_URL, channelId: process.env.DISCORD_CHANNEL_ID || null } : null });
   await bot.register().catch((e) => console.error('commands:', e.message));
   if (process.env.TELEGRAM_WEBHOOK_SECRET && process.env.PUBLIC_URL) {
     await telegram.setWebhook(`${process.env.PUBLIC_URL}/telegram/webhook`, process.env.TELEGRAM_WEBHOOK_SECRET);

@@ -10,6 +10,7 @@ const HELP = [
   '/add <name> | <area>  add a volunteer, get a pairing code for the glasses app',
   '/status  show who is due or overdue',
   '/reply <name> <text>  send a line to a volunteer\'s lens (or reply to their clue)',
+  '/app  open the team dashboard (in a private chat with me)',
   '/sheet <link>  connect a Google Sheet (tab Volunteers: name, area)',
   '/import  add every volunteer listed in the sheet',
   '/end  finish the run and post the debrief',
@@ -28,13 +29,13 @@ export const COMMANDS = {
   coordinator: [
     { command: 'team', description: 'Make this group a team' }, { command: 'run', description: 'Start a run' },
     { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' },
-    { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
+    { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'app', description: 'Open the team dashboard' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
     { command: 'end', description: 'Finish the run' },
     { command: 'coordinator', description: 'Send private notices to me' }, { command: 'help', description: 'List the commands' },
   ],
 };
 
-export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null }) {
+export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
 
   async function onMessage(m) {
@@ -45,6 +46,11 @@ export function makeBot({ engine, telegram, router, botUsername = 'callout_bot',
     const [, name, arg] = cmd;
     const isGroup = m.chat.type === 'group' || m.chat.type === 'supergroup';
 
+    if (name === 'app' || (name === 'start' && !isGroup && arg.trim() === 'app')) {
+      if (!appUrl) return say(chatId, 'The dashboard needs a public address, which is not set on this server yet.');
+      if (isGroup) return say(chatId, `Open the dashboard in a private chat with me: https://t.me/${botUsername}?start=app`);
+      return say(chatId, 'Team dashboard. Only the person who set up the team can use it.', { reply_markup: { inline_keyboard: [[{ text: 'Open dashboard', web_app: { url: appUrl } }]] } });
+    }
     if (name === 'start' && !isGroup && arg) return linkVolunteer(m, arg.trim().toUpperCase());
     if (name === 'start' && !isGroup) return say(chatId, `${HELP}
 

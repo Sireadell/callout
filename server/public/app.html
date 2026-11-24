@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Callout dashboard</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+body{font:15px system-ui;margin:0;padding:12px;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#111)}
+h1{font-size:17px;margin:0 0 8px}.card{border:1px solid #8884;border-radius:8px;padding:10px;margin:8px 0}
+.row{display:flex;justify-content:space-between;gap:8px}.st{font-weight:600}.overdue{color:#b00020}.silent{color:#8a5a00}
+button{font:inherit;padding:8px 10px;margin:4px 4px 0 0;border-radius:6px;border:1px solid #8886;background:var(--tg-theme-button-color,#2a7);color:var(--tg-theme-button-text-color,#fff)}
+small{opacity:.7}a{color:inherit}
+</style></head><body>
+<h1 id="title">Callout</h1><div id="list">Loading...</div><h1>Latest clues</h1><div id="clues"></div>
+<p><small>Team notices only. Not an emergency service.</small></p>
+<script>
+const tg = window.Telegram?.WebApp; tg?.ready(); tg?.expand();
+const init = tg?.initData || '';
+const mark = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '○' };
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function call(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ initData: init, ...body }) });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j;
+}
+let presets = [];
+async function load() {
+  try {
+    const s = await call('/app/api/state', {}); presets = s.presets;
+    document.getElementById('title').textContent = s.run ? `${s.team}: ${s.run}${s.status === 'ended' ? ' (finished)' : ''}` : s.team;
+    document.getElementById('list').innerHTML = s.volunteers.map((v) => `<div class="card"><div class="row"><span class="st ${v.state}">${mark[v.state]} ${esc(v.name)}</span><span>${esc(v.area)}</span></div>
+      <small>${v.state}${v.battery != null ? `, glasses ${v.battery}%` : ''}, ${v.checkins} check-ins${v.pos ? ` · <a href="https://www.openstreetmap.org/?mlat=${v.pos.lat}&mlon=${v.pos.lng}#map=17/${v.pos.lat}/${v.pos.lng}" target="_blank">last position</a>` : ''}</small><br>
+      ${s.status === 'active' ? presets.map((p, i) => `<button data-v="${esc(v.id)}" data-p="${i}">${esc(p)}</button>`).join('') : ''}</div>`).join('') || '<small>No volunteers yet.</small>';
+    document.getElementById('clues').innerHTML = s.clues.map((c) => `<div class="card"><b>${esc(c.by)}</b>: ${esc(c.text)}<br><small>${new Date(c.at).toLocaleTimeString()}</small></div>`).join('') || '<small>No clues yet.</small>';
+  } catch (e) { document.getElementById('list').textContent = e.message === 'not a coordinator' ? 'Only the person who set up the team can open this.' : 'Open this from the bot in Telegram.'; }
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-v]'); if (!b) return;
+  try { await call('/app/api/reply', { volunteerId: b.dataset.v, preset: Number(b.dataset.p) }); tg?.HapticFeedback?.notificationOccurred('success'); b.textContent = 'Sent'; } catch (err) { b.textContent = 'Failed'; }
+});
+load(); setInterval(load, 5000);
+</script></body></html>
