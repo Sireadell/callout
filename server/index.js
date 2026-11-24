@@ -3,7 +3,8 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { Engine } from './engine.js';
 import { Telegram } from './telegram.js';
-import { Discord } from './discord.js';
+import { Discord, verifyInteraction, makeInteractionHandler } from './discord.js';
+import { PRESETS } from './router.js';
 import { makeRouter } from './router.js';
 import { makeBot } from './bot.js';
 import { makeStt } from './stt.js';
@@ -15,7 +16,7 @@ const PORT = Number(process.env.PORT || 8787);
 const STATE = 'data/state.json';
 
 const telegram = process.env.TELEGRAM_BOT_TOKEN ? new Telegram(process.env.TELEGRAM_BOT_TOKEN) : null;
-const discord = new Discord();
+const discord = new Discord({ botToken: process.env.DISCORD_BOT_TOKEN || null });
 const engine = new Engine();
 const router = makeRouter({ engine, telegram, discord });
 engine.notify = router.notify;
@@ -49,6 +50,14 @@ function body(req, cap = 64 * 1024) {
 }
 const send = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST,OPTIONS' }); res.end(JSON.stringify(obj)); };
 
+const discordInteraction = makeInteractionHandler({ engine, presets: PRESETS });
+function rawBody(req, cap = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let n = 0; const chunks = [];
+    req.on('data', (c) => { n += c.length; if (n > cap) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  });
+}
 const stt = makeStt({ apiKey: process.env.ASSEMBLYAI_API_KEY });
 const routes = {
   'POST /api/pair': (b) => engine.pair(b.code),
@@ -89,6 +98,11 @@ const server = http.createServer(async (req, res) => {
       bot?.handle(update).catch((e) => console.error('bot error:', e.message));
       return;
     }
+    if (req.method === 'POST' && url.pathname === '/discord/interactions') {
+      const raw = await rawBody(req);
+      if (!process.env.DISCORD_PUBLIC_KEY || !verifyInteraction(process.env.DISCORD_PUBLIC_KEY, String(req.headers['x-signature-ed25519'] || ''), req.headers['x-signature-timestamp'], raw)) return send(res, 401, {});
+      return send(res, 200, discordInteraction(JSON.parse(raw)));
+    }
     const fn = routes[`${req.method} ${url.pathname}`];
     if (!fn) return send(res, 404, { error: 'not found' });
     send(res, 200, await fn(req.method === 'POST' ? await body(req, (url.pathname === '/api/voice' || url.pathname === '/api/photo') ? 900 * 1024 : undefined) : {}));
@@ -109,7 +123,7 @@ async function poll() {
 
 async function startTelegram() {
   const me = await telegram.getMe();
-  bot = makeBot({ engine, telegram, router, botUsername: me.username, ai, sheet });
+  bot = makeBot({ engine, telegram, router, botUsername: me.username, ai, sheet, discordDefault: process.env.DISCORD_WEBHOOK_URL ? { webhookUrl: process.env.DISCORD_WEBHOOK_URL, channelId: process.env.DISCORD_CHANNEL_ID || null } : null });
   await bot.register().catch((e) => console.error('commands:', e.message));
   if (process.env.TELEGRAM_WEBHOOK_SECRET && process.env.PUBLIC_URL) {
     await telegram.setWebhook(`${process.env.PUBLIC_URL}/telegram/webhook`, process.env.TELEGRAM_WEBHOOK_SECRET);

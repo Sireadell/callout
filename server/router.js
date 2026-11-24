@@ -89,7 +89,11 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
     }
     const jobs = [];
     if (team.telegram && telegram) jobs.push(toTelegram(team, n));
-    if (team.discord && discord && n.kind !== 'clue_photo') jobs.push(discord.post(team.discord.webhookUrl, n.text));
+    if (team.discord && discord && n.kind !== 'clue_photo' && n.kind !== 'run_closed') {
+      const buttons = keyboardFor(n) ? PRESETS.map((p, i) => ({ label: p, id: `r|${n.volunteerId}|${i}` })) : [];
+      if (buttons.length && discord.botToken && team.discord.channelId) jobs.push(discord.postWithButtons(team.discord.channelId, n.text, buttons));
+      else if (team.discord.webhookUrl) jobs.push(discord.post(team.discord.webhookUrl, n.text));
+    }
     const results = await Promise.allSettled(jobs);
     results.filter((r) => r.status === 'rejected').forEach((r) => log('send failed:', r.reason?.message));
     await updateBoard(n.runId);

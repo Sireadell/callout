@@ -34,7 +34,7 @@ export const COMMANDS = {
   ],
 };
 
-export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', ai = null, sheet = null }) {
+export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
 
   async function onMessage(m) {
@@ -54,7 +54,7 @@ ${ADMIN_LINK(botUsername)}`);
     if (name === 'team') {
       if (!isGroup) return say(chatId, 'Run /team inside your team group, with this bot added.');
       if (engine.teamByChat(chatId)) return say(chatId, 'This group is already a team.');
-      engine.addTeam({ name: arg || m.chat.title || 'Team', telegram: { chatId, coordinatorChatId: null, coordinatorUserId: m.from.id } });
+      engine.addTeam({ name: arg || m.chat.title || 'Team', telegram: { chatId, coordinatorChatId: null, coordinatorUserId: m.from.id }, discord: discordDefault });
       return say(chatId, `Team set up. Start a run with /run <name>. For private notices, ${m.from.first_name || 'coordinator'} should press Start in a private chat with this bot, then send /coordinator in this group.`);
     }
     const team = engine.teamByChat(chatId);
