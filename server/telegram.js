@@ -68,7 +68,7 @@ export class Telegram {
       form.set('chat_id', String(chatId));
       form.set('photo', new Blob([bytes], { type: 'image/jpeg' }), 'clue.jpg');
       if (caption) form.set('caption', caption.slice(0, 900));
-      for (const [k, v] of Object.entries(extra)) form.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+      for (const [k, v] of Object.entries(extra)) { if (v === undefined || v === null) continue; form.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v)); }
       const res = await this.fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, { method: 'POST', body: form });
       const data = await res.json().catch(() => ({}));
       if (!data.ok) throw new Error(`telegram sendPhoto: ${data.description || res.status}`);
