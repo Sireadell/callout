@@ -2,7 +2,7 @@ import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceC
 import { glanceText, MENU, PRESET_CLUES, listenText, thinkText, confirmText, isOk, okText, stillText } from './view.js';
 import { makeStillness } from './motion.js';
 
-const SERVER = localStorage.getItem('callout.server') || 'http://localhost:8787';
+const SERVER = import.meta.env?.VITE_SERVER_URL || localStorage.getItem('callout.server') || 'http://localhost:8787';
 const state = { mode: 'glance', screen: '', pending: null, token: null, sync: null, syncedAt: 0, flash: '', device: {}, lastReply: '' };
 let bridge;
 let flashTimer;
