@@ -45,6 +45,38 @@ export class Telegram {
   edit(chatId, messageId, text, extra = {}) {
     return this._queued(chatId, () => this.call('editMessageText', { chat_id: chatId, message_id: messageId, text: text.slice(0, 4000), ...extra }));
   }
+  // Live location with no end time, so it keeps moving until we stop it. Heading is 1 to 360 degrees.
+  sendLiveLocation(chatId, lat, lng, extra = {}) {
+    return this._queued(chatId, () => this.call('sendLocation', { chat_id: chatId, latitude: lat, longitude: lng, live_period: 0x7FFFFFFF, ...extra }));
+  }
+  editLiveLocation(chatId, messageId, lat, lng, heading) {
+    const body = { chat_id: chatId, message_id: messageId, latitude: lat, longitude: lng };
+    if (heading) body.heading = heading;
+    return this._queued(chatId, () => this.call('editMessageLiveLocation', body));
+  }
+  stopLiveLocation(chatId, messageId) {
+    return this.call('stopMessageLiveLocation', { chat_id: chatId, message_id: messageId });
+  }
+  // A clue as a map pin: the title is what was said, the address line says who.
+  sendVenue(chatId, lat, lng, title, address, extra = {}) {
+    return this._queued(chatId, () => this.call('sendVenue', { chat_id: chatId, latitude: lat, longitude: lng, title: title.slice(0, 120), address: address.slice(0, 120), ...extra }));
+  }
+  // Photos go up as a file, so this one is a form, not JSON.
+  sendPhoto(chatId, bytes, caption, extra = {}) {
+    return this._queued(chatId, async () => {
+      const form = new FormData();
+      form.set('chat_id', String(chatId));
+      form.set('photo', new Blob([bytes], { type: 'image/jpeg' }), 'clue.jpg');
+      if (caption) form.set('caption', caption.slice(0, 900));
+      for (const [k, v] of Object.entries(extra)) form.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+      const res = await this.fetch(`https://api.telegram.org/bot${this.token}/sendPhoto`, { method: 'POST', body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok) throw new Error(`telegram sendPhoto: ${data.description || res.status}`);
+      return data.result;
+    });
+  }
+  createForumTopic(chatId, name) { return this.call('createForumTopic', { chat_id: chatId, name: name.slice(0, 120) }); }
+  closeForumTopic(chatId, threadId) { return this.call('closeForumTopic', { chat_id: chatId, message_thread_id: threadId }); }
   pin(chatId, messageId) {
     return this.call('pinChatMessage', { chat_id: chatId, message_id: messageId, disable_notification: true });
   }

@@ -39,6 +39,8 @@ export const MENU = [
   { itemID: 3, itemName: 'Quick clue' },
   { itemID: 4, itemName: 'Repeat reply' },
   { itemID: 5, itemName: 'End run' },
+  { itemID: 6, itemName: 'Photo: camera' },
+  { itemID: 7, itemName: 'Photo: album' },
 ];
 
 // One tap each, no typing. Short so they fit on the lens.

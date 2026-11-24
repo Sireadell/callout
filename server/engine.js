@@ -121,8 +121,24 @@ export class Engine {
     this._touch(v, pos);
     const clue = { id: newId('clue'), volunteerId: v.id, text: String(text || '').slice(0, 500), pos: v.pos, voiceNoteId, photoId, at: this.clock.now() };
     run.clues.push(clue);
-    this._emit(run, 'team', 'clue', `${v.name} (${v.area}): ${clue.text} [${place(clue.pos)}]`, { volunteerId: v.id, clueId: clue.id });
+    this._emit(run, 'team', 'clue', `${v.name} (${v.area}): ${clue.text} [${place(clue.pos)}]`, {
+      volunteerId: v.id, clueId: clue.id, clueText: clue.text, who: `${v.name} (${v.area})`, pos: clue.pos,
+    });
     return clue;
+  }
+
+  // A photo for a clue already sent. The picture is passed straight to the chat apps and never kept here.
+  attachPhoto(token, { clueId, bytes }) {
+    const { run, v } = this._auth(token);
+    this._touch(v);
+    const clue = run.clues.find((c) => c.id === clueId && c.volunteerId === v.id);
+    if (!clue) throw new Error('unknown clue');
+    if (!bytes?.length || bytes.length > 600 * 1024) throw new Error('photo too large');
+    clue.photoId = newId('photo');
+    this._emit(run, 'team', 'clue_photo', `${v.name} (${v.area}): photo added to "${clue.text}"`, {
+      volunteerId: v.id, clueId: clue.id, photo: bytes,
+    });
+    return { photoId: clue.photoId };
   }
 
   // What the lens shows. Counts as contact from the glasses app.

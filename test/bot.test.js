@@ -5,6 +5,7 @@ import { makeRouter, PRESETS } from '../server/router.js';
 import { makeBot } from '../server/bot.js';
 
 // A fake Telegram that records what the bot sends.
+const fakeLive = []; const fakeStopped = []; const fakePhotos = []; const fakeForum = { on: false, topics: [], closed: [] };
 function fakeTelegram() {
   let id = 100; const out = []; const pins = []; const answers = [];
   return {
@@ -13,12 +14,21 @@ function fakeTelegram() {
     edit: async (chat, mid, text) => { out.push({ chat, edit: mid, text }); return {}; },
     pin: async (chat, mid) => { pins.push([chat, mid]); },
     answerCallback: async (qid, text) => { answers.push([qid, text]); },
+    live: [], photos: [], topics: [], closed: [], stopped: [], forum: false,
+    sendVenue: async (chat, lat, lng, title, address, extra = {}) => { const m = { chat, text: title + ' @ ' + address, venue: [lat, lng], extra, message_id: ++id }; out.push(m); return m; },
+    sendLiveLocation: async (chat, lat, lng, extra = {}) => { const m = { chat, lat, lng, extra, message_id: ++id }; fakeLive.push(m); return m; },
+    editLiveLocation: async (chat, mid, lat, lng, heading) => { fakeLive.push({ chat, edit: mid, lat, lng, heading }); },
+    stopLiveLocation: async (chat, mid) => { fakeStopped.push(mid); },
+    sendPhoto: async (chat, bytes, caption, extra = {}) => { const m = { chat, bytes, caption, extra, message_id: ++id }; fakePhotos.push(m); return m; },
+    createForumTopic: async (chat, name) => { if (!fakeForum.on) throw new Error('not a forum'); fakeForum.topics.push(name); return { message_thread_id: 55 }; },
+    closeForumTopic: async (chat, th) => { fakeForum.closed.push(th); },
   };
 }
 const msg = (text, extra = {}) => ({ message: { chat: { id: -500, type: 'supergroup', title: 'Wardens' }, from: { id: 7, first_name: 'Sam' }, text, message_id: 1, ...extra } });
 
 // The pairing code sits on its own line in the reply to /add.
 const codeIn = (m) => m.text.match(/\n([A-Z0-9]{10})\n/)[1];
+const lastCode = (tg) => codeIn(tg.out.filter((m) => /\n[A-Z0-9]{10}\n/.test(m.text || '')).at(-1));
 
 function setup() {
   const clock = { t: 5_000_000, now() { return this.t; }, advance(ms) { this.t += ms; } };
@@ -27,7 +37,7 @@ function setup() {
   const router = makeRouter({ engine, telegram: tg });
   engine.notify = router.notify;
   const bot = makeBot({ engine, telegram: tg, router });
-  return { clock, tg, engine, bot };
+  return { clock, tg, engine, bot, router };
 }
 
 test('team, run and add give a pairing code in the group', async () => {
@@ -35,7 +45,7 @@ test('team, run and add give a pairing code in the group', async () => {
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const code = codeIn(tg.out.at(-1));
+  const code = lastCode(tg);
   const joined = engine.pair(code);
   assert.equal(joined.name, 'Ana');
 });
@@ -45,7 +55,7 @@ test('a clue shows reply buttons; pressing one puts the line on the lens', async
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const { token } = engine.pair(codeIn(tg.out.at(-1)));
+  const { token } = engine.pair(lastCode(tg));
   engine.clue(token, { text: 'Person inside', pos: { lat: 1, lng: 2 } });
   await new Promise((r) => setImmediate(r));
   const clueMsg = tg.out.filter((m) => m.text?.includes('Person inside')).at(-1);
@@ -61,7 +71,7 @@ test('replying to a clue message sends that text to the volunteer', async () => 
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const { token } = engine.pair(codeIn(tg.out.at(-1)));
+  const { token } = engine.pair(lastCode(tg));
   engine.clue(token, { text: 'Road blocked' });
   await new Promise((r) => setImmediate(r));
   const clueMsg = tg.out.filter((m) => m.text?.includes('Road blocked')).at(-1);
@@ -74,7 +84,7 @@ test('button presses from other chats are refused', async () => {
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const { token, runId } = engine.pair(codeIn(tg.out.at(-1)));
+  const { token, runId } = engine.pair(lastCode(tg));
   const volId = Object.keys(engine.runs[runId].volunteers)[0];
   await bot.handle({ callback_query: { id: 'q2', data: `r|${volId}|0`, from: {}, message: { chat: { id: -999 } } } });
   assert.equal(tg.answers.at(-1)[1], 'Not available');
@@ -86,7 +96,7 @@ test('the status board is pinned once, then edited in place', async () => {
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const { token, runId } = engine.pair(codeIn(tg.out.at(-1)));
+  const { token, runId } = engine.pair(lastCode(tg));
   await new Promise((r) => setImmediate(r));
   clock.advance(60_000);
   engine.checkIn(token);
@@ -112,7 +122,7 @@ test('the private start link ties the volunteer to their chat, and the code stil
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const code = codeIn(tg.out.at(-1));
+  const code = lastCode(tg);
   await bot.handle(priv(`/start ${code}`));
   assert.match(tg.out.at(-1).text, /Linked: Ana/);
   assert.equal(tg.out.at(-1).chat, 77);
@@ -147,7 +157,7 @@ test('missed check-in buzzes, a clue is quiet, and positions are protected', asy
   await bot.handle(msg('/team Wardens'));
   await bot.handle(msg('/run Elm Street'));
   await bot.handle(msg('/add Ana | Area A1'));
-  const { token } = engine.pair(codeIn(tg.out.at(-1)));
+  const { token } = engine.pair(lastCode(tg));
   engine.checkIn(token);
   engine.clue(token, { text: 'Road blocked', pos: { lat: 1, lng: 2 } });
   await new Promise((r) => setImmediate(r));
@@ -159,4 +169,89 @@ test('missed check-in buzzes, a clue is quiet, and positions are protected', asy
   await new Promise((r) => setImmediate(r));
   const missed = tg.out.filter((m) => /Missed check-in/.test(m.text || '')).at(-1);
   assert.equal(missed.extra.disable_notification, false);
+});
+
+const tick = () => new Promise((r) => setImmediate(r));
+async function paired() {
+  const s = setup();
+  await s.bot.handle(msg('/team Wardens'));
+  await s.bot.handle(msg('/run Elm Street'));
+  await s.bot.handle(msg('/add Ana | Area A1'));
+  const { token, runId } = s.engine.pair(lastCode(s.tg));
+  await tick();
+  return { ...s, token, runId };
+}
+
+test('a clue with a position is a map pin with the reply buttons on it', async () => {
+  const { tg, engine, token } = await paired();
+  engine.clue(token, { text: 'Road blocked', pos: { lat: 51.5, lng: -0.1 } });
+  await tick(); await tick();
+  const pin = tg.out.find((m) => m.venue);
+  assert.deepEqual(pin.venue, [51.5, -0.1]);
+  assert.equal(pin.text, 'Road blocked @ Ana (Area A1)');
+  assert.equal(pin.extra.reply_markup.inline_keyboard.length, PRESETS.length);
+});
+
+test('live location starts once, moves only after 25 m and a minute, with a heading', async () => {
+  const { engine, token, router, clock } = await paired();
+  fakeLive.length = 0;
+  engine.heartbeat(token, { pos: { lat: 51.5, lng: -0.1 } });
+  await router.updateLocations(Object.keys(engine.runs)[0]);
+  assert.equal(fakeLive.length, 1);
+  assert.equal(fakeLive[0].extra.protect_content, true);
+  const run = Object.keys(engine.runs)[0];
+  // moved 5 m only: no edit
+  clock.advance(61_000);
+  engine.heartbeat(token, { pos: { lat: 51.50004, lng: -0.1 } });
+  await router.updateLocations(run);
+  assert.equal(fakeLive.length, 1);
+  // moved about 110 m north but only 10 s after the last edit window? wait a minute first
+  engine.heartbeat(token, { pos: { lat: 51.501, lng: -0.1 } });
+  await router.updateLocations(run);
+  assert.equal(fakeLive.length, 2);
+  assert.equal(fakeLive[1].heading, 360); // due north is 360, never 0
+  // moved far but too soon: no edit
+  clock.advance(10_000);
+  engine.heartbeat(token, { pos: { lat: 51.51, lng: -0.1 } });
+  await router.updateLocations(run);
+  assert.equal(fakeLive.length, 2);
+});
+
+test('live locations stop at the debrief and the position is wiped', async () => {
+  const { engine, token, router, bot, runId } = await paired();
+  fakeStopped.length = 0;
+  engine.heartbeat(token, { pos: { lat: 51.5, lng: -0.1 } });
+  await router.updateLocations(runId);
+  await bot.handle(msg('/end'));
+  await tick(); await tick(); await tick();
+  assert.equal(fakeStopped.length, 1);
+  assert.equal(engine.runs[runId].volunteers[Object.keys(engine.runs[runId].volunteers)[0]].pos, null);
+});
+
+test('a photo is posted as a reply to its clue and is not kept by the server', async () => {
+  const { engine, token, tg } = await paired();
+  fakePhotos.length = 0;
+  const clue = engine.clue(token, { text: 'Person inside', pos: { lat: 1, lng: 2 } });
+  await tick(); await tick();
+  const pinMsg = tg.out.find((m) => m.venue);
+  engine.attachPhoto(token, { clueId: clue.id, bytes: Buffer.from([1, 2, 3]) });
+  await tick(); await tick();
+  assert.equal(fakePhotos.length, 1);
+  assert.equal(fakePhotos[0].extra.reply_to_message_id, pinMsg.message_id);
+  assert.equal(JSON.stringify(engine.snapshot()).includes('"photo"'), false);
+  assert.throws(() => engine.attachPhoto(token, { clueId: 'nope', bytes: Buffer.from([1]) }), /unknown clue/);
+  assert.throws(() => engine.attachPhoto(token, { clueId: clue.id, bytes: Buffer.alloc(700 * 1024) }), /too large/);
+});
+
+test('in a forum group each run gets a topic that is closed at the debrief; elsewhere nothing changes', async () => {
+  fakeForum.on = true; fakeForum.topics.length = 0; fakeForum.closed.length = 0;
+  const { tg, bot } = await paired();
+  assert.deepEqual(fakeForum.topics, ['Elm Street']);
+  assert.ok(tg.out.some((m) => m.extra?.message_thread_id === 55), 'notices go into the run topic');
+  await bot.handle(msg('/end'));
+  await tick(); await tick(); await tick();
+  assert.deepEqual(fakeForum.closed, [55]);
+  fakeForum.on = false;
+  const plain = await paired();
+  assert.equal(plain.tg.out.some((m) => m.extra?.message_thread_id), false);
 });

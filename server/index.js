@@ -30,7 +30,7 @@ function save() {
   fs.renameSync(`${STATE}.tmp`, STATE);
   lastSaved = s;
 }
-setInterval(() => { engine.tick(); Object.keys(engine.runs).forEach((id) => engine.runs[id].status === 'active' && router.updateBoard(id)); save(); }, 5000).unref();
+setInterval(() => { engine.tick(); Object.keys(engine.runs).forEach((id) => engine.runs[id].status === 'active' && (router.updateBoard(id), router.updateLocations(id))); save(); }, 5000).unref();
 
 // ---- very small request helpers ----
 const hits = new Map();
@@ -58,6 +58,8 @@ const routes = {
     if (!process.env.ASSEMBLYAI_API_KEY && process.env.CALLOUT_DEV === '1') return { text: b.devText || 'Person inside' }; // dev stub, labelled in the video
     return { text: await stt.transcribe(Buffer.from(String(b.audio || ''), 'base64')) };
   },
+  // A photo for a clue already sent: base64 JPEG, passed on to the chat and not kept.
+  'POST /api/photo': (b) => engine.attachPhoto(b.token, { clueId: b.clueId, bytes: Buffer.from(String(b.image || ''), 'base64') }),
   'GET /healthz': () => ({ ok: true }),
 };
 // Local testing only: makes a team, a run and one volunteer and returns the pairing code.
@@ -84,7 +86,7 @@ const server = http.createServer(async (req, res) => {
     }
     const fn = routes[`${req.method} ${url.pathname}`];
     if (!fn) return send(res, 404, { error: 'not found' });
-    send(res, 200, await fn(req.method === 'POST' ? await body(req, url.pathname === '/api/voice' ? 512 * 1024 : undefined) : {}));
+    send(res, 200, await fn(req.method === 'POST' ? await body(req, (url.pathname === '/api/voice' || url.pathname === '/api/photo') ? 900 * 1024 : undefined) : {}));
   } catch (e) {
     send(res, 400, { error: e.message });
   }

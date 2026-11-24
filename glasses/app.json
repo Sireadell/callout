@@ -8,6 +8,9 @@
   "entrypoint": "index.html",
   "permissions": [
     { "name": "network", "desc": "Sends check-ins and clues to your team's Callout server.", "whitelist": ["http://localhost:8787"] },
-    { "name": "location", "desc": "Adds your position to check-ins during a run." }
+    { "name": "location", "desc": "Adds your position to check-ins during a run." },
+    { "name": "camera", "desc": "Lets you add a photo to a clue." },
+    { "name": "album", "desc": "Lets you add a photo from your album to a clue." },
+    { "name": "g2-microphone", "desc": "Records your voice for a spoken clue only while you are talking." }
   ]
 }

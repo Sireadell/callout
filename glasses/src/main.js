@@ -73,7 +73,35 @@ function showConfirm(text) {
 }
 
 async function sendClue(text) {
-  try { await api('/api/clue', { text, pos: await pos() }); flash('● Clue sent'); } catch { flash('▲ Not sent. Try again'); }
+  try { const r = await api('/api/clue', { text, pos: await pos() }); state.lastClueId = r.id; flash('● Clue sent'); } catch { flash('▲ Not sent. Try again'); }
+}
+
+// ---- photo for the last clue: never needed for the core flow, added after the clue ----
+// Shrunk to 800 px wide JPEG so it stays small on a phone connection.
+function shrink(asset, maxW = 800) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, maxW / img.width);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/jpeg', 0.6).split(',')[1]);
+    };
+    img.onerror = reject;
+    img.src = `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`;
+  });
+}
+async function addPhoto(fromCamera) {
+  if (!state.token) return flash('Pair first');
+  if (!state.lastClueId) return flash('Send a clue first');
+  try {
+    const asset = fromCamera ? await bridge.captureImageFromCamera() : await bridge.pickImageFromAlbum();
+    if (!asset) return flash('No photo taken');
+    flash('Sending photo...', 8000);
+    await api('/api/photo', { clueId: state.lastClueId, image: await shrink(asset) });
+    flash('● Photo sent');
+  } catch { flash('▲ Photo not sent'); }
 }
 async function sendPending() {
   clearInterval(voice.timer);
@@ -159,6 +187,8 @@ async function onMenu(id) {
   else if (id === 3) openPresets();
   else if (id === 4) flash(state.lastReply ? `Reply: ${state.lastReply}` : 'No reply yet', 6000);
   else if (id === 5) bridge.shutDownPageContainer(1);
+  else if (id === 6) addPhoto(true);
+  else if (id === 7) addPhoto(false);
 }
 
 function onEvent(e) {
