@@ -77,8 +77,11 @@ function onEvent(e) {
     else if (id === 3) bridge.shutDownPageContainer(1);
     return;
   }
-  const t = (e.textEvent || e.sysEvent || e.listEvent)?.eventType;
-  if (t === OsEventTypeList.CLICK_EVENT || (e.textEvent && t === undefined)) checkIn(); // ring or temple tap
+  const ev = e.textEvent || e.sysEvent || e.listEvent;
+  if (!ev) return;
+  // A plain tap arrives with no eventType (click is code 0, which the host leaves out).
+  const t = ev.eventType ?? OsEventTypeList.CLICK_EVENT;
+  if (t === OsEventTypeList.CLICK_EVENT) checkIn(); // ring or temple tap
   else if (t === OsEventTypeList.DOUBLE_CLICK_EVENT) bridge.shutDownPageContainer(1);   // store rule: system exit dialog
   else if (t === OsEventTypeList.FOREGROUND_ENTER_EVENT) { sync(); heartbeat(); }
 }
@@ -95,6 +98,9 @@ async function start() {
   bridge.onEvenHubEvent(onEvent);
   bridge.onDeviceStatusChanged((s) => { state.device = s; if (s.connectType === DeviceConnectType.Connected) heartbeat(); });
   window.callout = { pair, sync, checkIn };
+  // Local testing: open the page with ?code=XXXX to pair without typing.
+  const urlCode = new URLSearchParams(location.search).get('code');
+  if (urlCode && !state.token) await pair(urlCode.toUpperCase()).catch(() => {});
   setInterval(paint, 1000); setInterval(sync, 5000); setInterval(heartbeat, 30000);
   sync();
 }

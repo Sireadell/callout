@@ -52,6 +52,15 @@ const routes = {
   'POST /api/sync': (b) => engine.sync(b.token, { pos: b.pos }),
   'GET /healthz': () => ({ ok: true }),
 };
+// Local testing only: makes a team, a run and one volunteer and returns the pairing code.
+if (process.env.CALLOUT_DEV === '1') {
+  routes['POST /dev/seed'] = (b) => {
+    const team = engine.addTeam({ name: b.team || 'Test team' });
+    const run = engine.startRun({ teamId: team.id, name: b.run || 'Elm Street' });
+    const { code } = engine.addVolunteer(run.id, { name: b.name || 'Ana', area: b.area || 'Area A1' });
+    return { runId: run.id, code };
+  };
+}
 
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, {});
