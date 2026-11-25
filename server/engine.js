@@ -88,6 +88,7 @@ export class Engine {
     const prevStep = v.step;
     v.lastCheckin = this.clock.now();
     v.step = 0;
+    v.nudge = 0;
     v.checkins += 1;
     if (prevStep === 1) this._emit(run, 'coordinator', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
     if (prevStep === 2) this._emit(run, 'team', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
@@ -163,15 +164,55 @@ export class Engine {
     const { run, v } = this._auth(token);
     const r = run.replies.find((x) => x.id === replyId && x.volunteerId === v.id);
     if (!r) throw new Error('unknown reply');
+    if (r.confirmedAt) return; // a second tap changes nothing
     r.confirmedAt = this.clock.now();
-    this._emit(run, 'coordinator', 'reply_confirmed', `${v.name} confirmed: "${r.text}"`, { volunteerId: v.id });
+    this._emit(run, 'coordinator', 'reply_confirmed', `${v.name} saw: "${r.text}"`, { volunteerId: v.id, src: r.src });
+  }
+
+  // The volunteer signs out from the lens menu: no more check-in notices for them.
+  signOut(token) {
+    const { run, v } = this._auth(token);
+    if (v.status === 'signed_out') return;
+    v.status = 'signed_out';
+    v.step = 0;
+    this._emit(run, 'team', 'signed_out', `${v.name} (${v.area}) signed out.`, { volunteerId: v.id });
+  }
+
+  // A team request from the lens menu. Worded as a request to the team, never as an alarm.
+  needBackup(token, { pos } = {}) {
+    const { run, v } = this._auth(token);
+    this._touch(v, pos);
+    this._emit(run, 'team', 'need_backup', `${v.name} (${v.area}) asked the team for backup. Last position: ${place(v.pos)}. ${TEAM_ONLY}`, { volunteerId: v.id, pos: v.pos, clueText: `${v.name} asked the team for backup`, who: `${v.name} (${v.area}), team notice only` });
   }
 
   // ---------- events from the coordinator (chat apps) ----------
-  reply(runId, { volunteerId, text, by = 'coordinator', short }) {
+  // The coordinator reached them another way (radio, phone): clear the overdue steps.
+  markOk(runId, volunteerId, by = 'coordinator') {
+    const run = this._run(runId);
+    const v = run.volunteers[volunteerId];
+    if (!v || v.status !== 'active') throw new Error('unknown volunteer');
+    v.lastCheckin = this.clock.now();
+    v.lastSeen = this.clock.now();
+    v.step = 0; v.nudge = 0; v.flags.silent = false; v.flags.still = false;
+    v.marked = (v.marked || 0) + 1;
+    this._emit(run, 'team', 'marked_ok', `${v.name} (${v.area}) marked OK by ${by}.`, { volunteerId: v.id });
+  }
+
+  // A check-in pressed in the volunteer's own private chat with the bot.
+  checkInFor(volunteerId) {
+    const { run, v } = this.findVolunteer(volunteerId);
+    if (run.status !== 'active' || v.status !== 'active') throw new Error('not active');
+    const prev = v.step;
+    v.lastCheckin = this.clock.now(); v.lastSeen = v.lastCheckin;
+    v.step = 0; v.nudge = 0; v.checkins += 1; v.flags.silent = false;
+    if (prev === 1) this._emit(run, 'coordinator', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
+    if (prev === 2) this._emit(run, 'team', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
+  }
+
+  reply(runId, { volunteerId, text, by = 'coordinator', short, src }) {
     const run = this._run(runId);
     if (!run.volunteers[volunteerId]) throw new Error('unknown volunteer');
-    const r = { id: newId('rep'), volunteerId, text: String(text).slice(0, 500), short: short ? String(short).slice(0, 80) : undefined, by, at: this.clock.now(), delivered: false, confirmedAt: null };
+    const r = { id: newId('rep'), volunteerId, text: String(text).slice(0, 500), short: short ? String(short).slice(0, 80) : undefined, by, src, at: this.clock.now(), delivered: false, confirmedAt: null };
     run.replies.push(r);
     return r;
   }
@@ -187,6 +228,17 @@ export class Engine {
       for (const v of Object.values(run.volunteers)) {
         if (v.status !== 'active') continue;
         const overdue = now - (v.lastCheckin + this.cfg.checkinMs);
+        // Private phone nudges for the volunteer, only if they linked their chat. Never include a position.
+        if (v.tgChatId) {
+          const soon = Math.min(2 * 60_000, Math.floor(this.cfg.checkinMs / 3));
+          if (overdue >= 0 && (v.nudge || 0) < 2) {
+            v.nudge = 2;
+            this._emit(run, 'volunteer', 'nudge_overdue', `Check-in time, ${v.name}. Press the button or check in on your glasses. If there is none, your coordinator is told in ${Math.max(1, Math.round(this.cfg.coordinatorGraceMs / 60_000))} min.`, { volunteerId: v.id });
+          } else if (overdue >= -soon && overdue < 0 && !v.nudge) {
+            v.nudge = 1;
+            this._emit(run, 'volunteer', 'nudge_soon', `Check-in due in about ${Math.max(1, Math.ceil(-overdue / 60_000))} min.`, { volunteerId: v.id });
+          }
+        }
         if (overdue >= this.cfg.coordinatorGraceMs && v.step < 1) {
           v.step = 1; v.missed += 1;
           this._emit(run, 'coordinator', 'missed_checkin',
@@ -211,6 +263,7 @@ export class Engine {
     const now = this.clock.now();
     return Object.values(run.volunteers).map((v) => {
       let state = 'waiting';
+      if (v.status === 'signed_out') state = 'out';
       if (v.status === 'active') {
         const left = v.lastCheckin + this.cfg.checkinMs - now;
         state = v.flags.silent ? 'silent' : v.step > 0 ? 'overdue' : left <= 0 ? 'due' : 'ok';

@@ -81,6 +81,7 @@ export class Telegram {
     return this.call('pinChatMessage', { chat_id: chatId, message_id: messageId, disable_notification: true });
   }
   getMe() { return this.call('getMe'); }
+  getChatMember(chatId, userId) { return this.call('getChatMember', { chat_id: chatId, user_id: userId }); }
   // Commands shown in the "/" menu, per audience (scope), so volunteers and coordinators see different lists.
   setMyCommands(commands, scope = { type: 'default' }) { return this.call('setMyCommands', { commands, scope }); }
   // Webhook with a secret header: Telegram sends it back on every update and the server checks it.

@@ -61,7 +61,7 @@ test('a clue shows reply buttons; pressing one puts the line on the lens', async
   const clueMsg = tg.out.filter((m) => m.text?.includes('Person inside')).at(-1);
   const buttons = clueMsg.extra.reply_markup.inline_keyboard.flat();
   assert.equal(buttons.length, PRESETS.length);
-  await bot.handle({ callback_query: { id: 'q1', data: buttons[0].callback_data, from: { first_name: 'Sam' }, message: { chat: { id: -500 } } } });
+  await bot.handle({ callback_query: { id: 'q1', data: buttons[0].callback_data, from: { id: 7, first_name: 'Sam' }, message: { chat: { id: -500 } } } });
   assert.equal(engine.sync(token).replies[0].text, PRESETS[0]);
   assert.match(tg.answers.at(-1)[1], /Sent to Ana/);
 });
@@ -350,7 +350,7 @@ test('a thumbs up on a clue puts Seen on the lens; other emoji and removals do n
   engine.clue(token, { text: 'House empty' });
   await new Promise((r) => setImmediate(r));
   const clueMsg = tg.out.filter((m) => m.text?.includes('House empty')).at(-1);
-  const react = (nw, old = []) => bot.handle({ message_reaction: { chat: { id: -500 }, message_id: clueMsg.message_id, user: { first_name: 'Sam' }, old_reaction: old, new_reaction: nw } });
+  const react = (nw, old = []) => bot.handle({ message_reaction: { chat: { id: -500 }, message_id: clueMsg.message_id, user: { id: 7, first_name: 'Sam' }, old_reaction: old, new_reaction: nw } });
   await react([{ type: 'emoji', emoji: '\u{1F525}' }]);
   assert.equal(engine.sync(token).replies.length, 0);
   await react([{ type: 'emoji', emoji: '\u{1F44D}' }]);

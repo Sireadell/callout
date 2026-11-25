@@ -2,6 +2,7 @@
 // replies to the bot's messages and button presses all reach the bot.
 import { PRESETS, boardText } from './router.js';
 import { parseSheetId } from './sheet.js';
+import { trimLine } from './ai.js';
 
 const HELP = [
   'Callout team check-in bot.',
@@ -35,8 +36,18 @@ export const COMMANDS = {
   ],
 };
 
+// Commands that change a run. Everyone in the group can read the board; only the coordinator or a group admin can do these.
+const COORD_ONLY = new Set(['coordinator', 'run', 'add', 'reply', 'sheet', 'import', 'end']);
+
 export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
+
+  // The person who set up the team, or a group admin.
+  async function isCoord(team, userId, chatId) {
+    if (userId == null) return false;
+    if (userId === team.telegram?.coordinatorUserId) return true;
+    try { const mem = await telegram.getChatMember?.(chatId, userId); return mem?.status === 'creator' || mem?.status === 'administrator'; } catch { return false; }
+  }
 
   async function onMessage(m) {
     // Turning on Topics changes a group into a supergroup with a new chat id. Follow it.
@@ -73,10 +84,15 @@ ${ADMIN_LINK(botUsername)}`);
     const team = engine.teamByChat(chatId);
     if (!team) return say(chatId, 'No team yet. Add me to your group and send /team <name>.');
 
+    if (COORD_ONLY.has(name) && !(await isCoord(team, m.from?.id, chatId))) return say(chatId, 'Only the coordinator can do that.', { disable_notification: true });
+
     if (name === 'coordinator') {
       if (m.from.id !== team.telegram.coordinatorUserId) return say(chatId, 'Only the person who set up the team can do that.');
+      // A bot cannot message someone who never pressed Start, so try it now and say what happened.
+      try { await say(m.from.id, 'Private notices are on. Missed check-ins and quiet glasses will be sent here.', { disable_notification: true }); }
+      catch { return say(chatId, `I cannot reach you privately yet. Press Start in a private chat with me (https://t.me/${botUsername}), then send /coordinator again. Until then notices stay in this group.`); }
       team.telegram.coordinatorChatId = m.from.id;
-      return say(chatId, 'Coordinator notices will now go to your private chat. If you have not pressed Start with me there, they stay in this group.');
+      return say(chatId, 'Done. Coordinator notices now go to your private chat. If that ever fails, they come back to this group.', { disable_notification: true });
     }
     if (name === 'run') {
       if (engine.activeRun(team.id)) return say(chatId, 'A run is already active. Send /end first.');
@@ -98,7 +114,7 @@ Everyone who joins agrees to share their position with this group while the run 
     if (name === 'reply') {
       const v = Object.values(run.volunteers).find((x) => arg.toLowerCase().startsWith(x.name.toLowerCase() + ' '));
       if (!v) return say(chatId, 'Use: /reply <volunteer name> <text>');
-      await lensReply(run, v.id, arg.slice(v.name.length + 1), m.from.first_name || 'coordinator');
+      await lensReply(run, v.id, arg.slice(v.name.length + 1), m.from.first_name || 'coordinator', { chat: chatId, id: m.message_id });
       return ack(m, v);
     }
     if (name === 'sheet') {
@@ -132,9 +148,10 @@ Everyone who joins agrees to share their position with this group while the run 
   }
 
   // A coordinator line for the lens. Long ones get a one-line version on the lens; the full text stays under Repeat reply.
-  async function lensReply(run, volunteerId, text, by) {
-    const short = ai?.enabled && text.length > 60 ? await ai.oneLine(text) : undefined;
-    return engine.reply(run.id, { volunteerId, text, by, short });
+  async function lensReply(run, volunteerId, text, by, src) {
+    // With no AI key the first sentence is cut to fit. The full text stays under Repeat reply.
+    const short = text.length <= 60 ? undefined : ai?.enabled ? await ai.oneLine(text) : trimLine(text);
+    return engine.reply(run.id, { volunteerId, text, by, short, src });
   }
 
   // The volunteer opens t.me/<bot>?start=<code>. A bot cannot message anyone first, so this
@@ -175,7 +192,8 @@ Everyone who joins agrees to share their position with this group while the run 
     const run = team && engine.activeRun(team.id);
     const volId = run?.msgIndex?.[`${m.chat.id}:${ref.message_id}`];
     if (!volId) return;
-    await lensReply(run, volId, m.text, m.from.first_name || 'coordinator');
+    if (!(await isCoord(team, m.from?.id, m.chat.id))) return;
+    await lensReply(run, volId, m.text, m.from.first_name || 'coordinator', { chat: m.chat.id, id: m.message_id });
     return ack(m, run.volunteers[volId]);
   }
 
@@ -193,6 +211,7 @@ Everyone who joins agrees to share their position with this group while the run 
     const run = team && engine.activeRun(team.id);
     const volId = run?.msgIndex?.[`${u.chat.id}:${u.message_id}`];
     if (!volId) return;
+    if (!(await isCoord(team, u.user?.id, u.chat.id))) return;
     const added = (u.new_reaction || []).filter((x) => x.type === 'emoji' && REACTIONS[x.emoji]);
     const before = new Set((u.old_reaction || []).map((x) => x.emoji));
     const fresh = added.find((x) => !before.has(x.emoji));
@@ -205,11 +224,23 @@ Everyone who joins agrees to share their position with this group while the run 
       const { run, v } = engine.findVolunteer(volId);
       const team = engine.teams[run.teamId];
       const chat = q.message?.chat?.id;
+      if (run.status !== 'active') return telegram.answerCallback(q.id, 'Not available');
+      // The volunteer's own Check in button: only works from their own private chat.
+      if (kind === 'ci') {
+        if (!v.tgChatId || chat !== v.tgChatId) return telegram.answerCallback(q.id, 'Not available');
+        engine.checkInFor(v.id);
+        return telegram.answerCallback(q.id, 'Checked in. Thank you.');
+      }
       const allowed = team.telegram && (chat === team.telegram.chatId || chat === team.telegram.coordinatorChatId);
-      if (!allowed || run.status !== 'active') return telegram.answerCallback(q.id, 'Not available');
+      if (!allowed) return telegram.answerCallback(q.id, 'Not available');
+      if (!(await isCoord(team, q.from?.id, chat))) return telegram.answerCallback(q.id, 'Only the coordinator can do that');
       if (kind === 'r' && PRESETS[Number(idx)]) {
         engine.reply(run.id, { volunteerId: v.id, text: PRESETS[Number(idx)], by: q.from.first_name || 'coordinator' });
         return telegram.answerCallback(q.id, `Sent to ${v.name}`);
+      }
+      if (kind === 'ok') {
+        engine.markOk(run.id, v.id, q.from.first_name || 'coordinator');
+        return telegram.answerCallback(q.id, `${v.name} marked OK`);
       }
     } catch { /* fall through */ }
     return telegram.answerCallback(q.id, 'Not available');

@@ -68,6 +68,8 @@ const routes = {
   'POST /api/checkin': (b) => engine.checkIn(b.token, { pos: b.pos }),
   'POST /api/heartbeat': (b) => { engine.heartbeat(b.token, b); return { ok: true }; },
   'POST /api/clue': (b) => { const c = engine.clue(b.token, b); return { id: c.id }; },
+  'POST /api/signout': (b) => { engine.signOut(b.token); return { ok: true }; },
+  'POST /api/backup': (b) => { engine.needBackup(b.token, { pos: b.pos }); return { ok: true }; },
   'POST /api/confirm': (b) => { engine.confirmReply(b.token, b.replyId); return { ok: true }; },
   'POST /api/sync': (b) => engine.sync(b.token, { pos: b.pos }),
   // Audio from the glasses: base64 of raw 16 kHz 16 bit mono. Returns the words, nothing is stored.

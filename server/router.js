@@ -1,8 +1,8 @@
 // Sends engine notices to the team's chat apps and keeps one pinned status
 // board per run, edited in place. Also keeps live locations and the run's topic.
-const ICON = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '○' };
+const ICON = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '○', out: '○' };
 // Loud notices buzz phones. Everything else arrives quietly.
-const LOUD = new Set(['missed_checkin', 'missed_checkin_team', 'went_silent', 'still']);
+const LOUD = new Set(['missed_checkin', 'missed_checkin_team', 'went_silent', 'still', 'need_backup', 'nudge_overdue']);
 // Notices that carry a position or a person's details cannot be forwarded or saved from the chat.
 const OPEN = new Set(['run_started', 'joined', 'debrief', 'summary']);
 export const PRESETS = ['Stay where you are', 'Move to your next area', 'Return to base', 'Call me'];
@@ -30,7 +30,7 @@ export function boardText(engine, runId) {
   const rows = engine.teamStatus(runId).map((s) => {
     const v = run.volunteers[s.id];
     const left = v.status === 'active' ? Math.round((v.lastCheckin + engine.cfg.checkinMs - engine.clock.now()) / 60000) : null;
-    const when = left === null ? 'not joined' : left >= 0 ? `next check-in in ${left} min` : `${-left} min overdue`;
+    const when = v.status === 'signed_out' ? 'signed out' : left === null ? 'not joined' : left >= 0 ? `next check-in in ${left} min` : `${-left} min overdue`;
     return `${ICON[s.state]} ${s.name} (${s.area}) ${when}${s.battery != null ? `, glasses ${s.battery}%` : ''}`;
   });
   return `Run: ${run.name}${run.status === 'ended' ? ' (finished)' : ''}\n${rows.join('\n') || 'No volunteers yet.'}\nTeam notices only. Not an emergency service.`;
@@ -38,8 +38,10 @@ export function boardText(engine, runId) {
 
 export function makeRouter({ engine, telegram = null, discord = null, log = console.error }) {
   const keyboardFor = (n) => {
-    if (n.kind === 'clue' || n.kind === 'missed_checkin' || n.kind === 'went_silent') {
+    if (n.kind === 'nudge_overdue') return { inline_keyboard: [[{ text: 'Check in', callback_data: `ci|${n.volunteerId}` }]] };
+    if (['clue', 'missed_checkin', 'went_silent', 'need_backup', 'missed_checkin_team'].includes(n.kind)) {
       const rows = PRESETS.map((p, i) => [{ text: p, callback_data: `r|${n.volunteerId}|${i}` }]);
+      if (n.kind !== 'clue' && n.kind !== 'need_backup') rows.push([{ text: 'Reached them, mark OK', callback_data: `ok|${n.volunteerId}` }]);
       return { inline_keyboard: rows };
     }
     return undefined;
@@ -56,26 +58,46 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
   async function toTelegram(team, n) {
     const t = team.telegram;
     const run = engine.runs[n.runId];
-    const toCoordinator = n.audience === 'coordinator' && t.coordinatorChatId != null;
-    const chat = toCoordinator ? t.coordinatorChatId : t.chatId;
+    // A reaction on the coordinator's own line: the volunteer saw it on the lens.
+    if (n.kind === 'reply_confirmed' && n.src) {
+      await telegram.setReaction(n.src.chat, n.src.id, '👀').catch(() => {});
+      return;
+    }
+    // Private nudges go only to the volunteer's own chat, never to the group.
+    if (n.audience === 'volunteer') {
+      const { v } = engine.findVolunteer(n.volunteerId);
+      if (!v.tgChatId) return;
+      const sentPrivate = await telegram.send(v.tgChatId, n.text, { reply_markup: keyboardFor(n), disable_notification: !LOUD.has(n.kind), protect_content: true });
+      return sentPrivate;
+    }
+    let toCoordinator = n.audience === 'coordinator' && t.coordinatorChatId != null;
+    let chat = toCoordinator ? t.coordinatorChatId : t.chatId;
     if (run && !toCoordinator) await ensureTopic(run, team);
-    const base = {
-      reply_markup: keyboardFor(n),
-      disable_notification: !LOUD.has(n.kind),
-      protect_content: !OPEN.has(n.kind),
-      ...threadOf(run, chat, team),
+    const post = async () => {
+      const base = {
+        reply_markup: keyboardFor(n),
+        disable_notification: !LOUD.has(n.kind),
+        protect_content: !OPEN.has(n.kind),
+        ...threadOf(run, chat, team),
+      };
+      if ((n.kind === 'clue' || n.kind === 'need_backup') && n.pos) return telegram.sendVenue(chat, n.pos.lat, n.pos.lng, n.clueText || 'Backup requested', n.who, base); // a map pin
+      if (n.kind === 'clue_photo') {
+        const replyTo = run?.clueMsg?.[`${chat}:${n.clueId}`];
+        return telegram.sendPhoto(chat, n.photo, n.text, { ...base, ...(replyTo ? { reply_to_message_id: replyTo } : {}) });
+      }
+      return telegram.send(chat, n.text, base);
     };
     let sent;
-    if (n.kind === 'clue' && n.pos) {
-      sent = await telegram.sendVenue(chat, n.pos.lat, n.pos.lng, n.clueText, n.who, base); // a clue is a map pin
-    } else if (n.kind === 'clue_photo') {
-      const replyTo = run?.clueMsg?.[`${chat}:${n.clueId}`];
-      sent = await telegram.sendPhoto(chat, n.photo, n.text, { ...base, ...(replyTo ? { reply_to_message_id: replyTo } : {}) });
-    } else {
-      sent = await telegram.send(chat, n.text, base);
+    try { sent = await post(); } catch (e) {
+      if (!toCoordinator) throw e;
+      // The coordinator never pressed Start with the bot. A missed check-in must still reach someone: post it in the group.
+      t.coordinatorChatId = null; toCoordinator = false; chat = t.chatId;
+      if (run) await ensureTopic(run, team);
+      await telegram.send(chat, 'I cannot message the coordinator privately yet (they need to press Start in a private chat with me). Notices will stay in this group.', { disable_notification: true, ...threadOf(run, chat, team) }).catch(() => {});
+      sent = await post();
     }
     if (run && n.volunteerId) (run.msgIndex ||= {})[`${chat}:${sent.message_id}`] = n.volunteerId;
-    if (run && n.kind === 'clue') (run.clueMsg ||= {})[`${chat}:${n.clueId}`] = sent.message_id;
+    if (run && (n.kind === 'clue' || n.kind === 'need_backup')) (run.clueMsg ||= {})[`${chat}:${n.clueId}`] = sent.message_id;
     if (run && n.kind === 'debrief') await stopLive(run.id);
   }
 
@@ -89,7 +111,7 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
     }
     const jobs = [];
     if (team.telegram && telegram) jobs.push(toTelegram(team, n));
-    if (team.discord && discord && n.kind !== 'clue_photo' && n.kind !== 'run_closed') {
+    if (team.discord && discord && n.kind !== 'clue_photo' && n.kind !== 'run_closed' && n.audience !== 'volunteer' && !(n.kind === 'reply_confirmed' && n.src)) {
       const buttons = keyboardFor(n) ? PRESETS.map((p, i) => ({ label: p, id: `r|${n.volunteerId}|${i}` })) : [];
       if (buttons.length && discord.botToken && team.discord.channelId) jobs.push(discord.postWithButtons(team.discord.channelId, n.text, buttons));
       else if (team.discord.webhookUrl) jobs.push(discord.post(team.discord.webhookUrl, n.text));
