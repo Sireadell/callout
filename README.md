@@ -93,7 +93,7 @@ The AI only sees counts and clue words. No names, no positions. It runs on the s
 |---|---|
 | Useful at a glance | Run, area, check-in clock, "Team 3/4 checked in", the last reply, low battery and no signal lines |
 | Read and write by voice or tap | Check in by ring tap or by saying "OK". Clue by voice (4 seconds, sends itself after 3 seconds, "cancel" or a swipe stops it), from a list of 4 quick clues, or with a photo |
-| Technical | Timers live on the server, so a paused phone still gets noticed. Voices that are not the wearer's are dropped. Speech to text runs on the server and nothing is stored |
+| Technical | Check-ins and clues made with no signal are kept on the phone and sent in order when it returns, each with the time it was made (the server caps that time at 30 minutes and never accepts the future). `/interval 5` to `/interval 60` sets the check-in gap for a run. Timers live on the server, so a paused phone still gets noticed. Voices that are not the wearer's are dropped. Speech to text runs on the server and nothing is stored |
 | Display and voice | Plain glyphs only, since the lens drops emoji. Every gesture changes the screen. Double tap on the main screen opens the exit dialog |
 | Business and safety | Same wording on lens and bot: team notices only, not an emergency service. Positions deleted when the run ends |
 

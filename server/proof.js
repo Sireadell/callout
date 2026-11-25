@@ -83,7 +83,7 @@ check('after the run: no positions, trails or tokens are kept', (() => {
   return v.pos === null && v.trail.length === 0 && Object.keys(engine.tokens).length === 0;
 })());
 check('missed check-in notices say they go only to the team', sent.filter((m) => /Missed check-in|Still no check-in/.test(m.text || '')).every((m) => /only to your own team/.test(m.text)));
-check('nothing claims emergency or life-saving service', !sent.some((m) => /\b(SOS|dispatch|rescue service|life.?sav)/i.test(m.text || '')));
+check('nothing claims emergency or life-saving service', !sent.some((m) => /\b(SOS|dispatch|rescue|life.?sav|help is coming|diagnos|unconscious|injur)/i.test(m.text || '')));
 
 console.log(failed ? `\n${failed} check(s) failed` : `\nAll checks passed (${sent.length} messages sent to the fake chat).`);
 process.exit(failed ? 1 : 0);
