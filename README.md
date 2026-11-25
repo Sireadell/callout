@@ -115,7 +115,7 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 | AI reply and summary | Built and tested with fakes. Needs a Claude or OpenRouter key |
 | Mini App dashboard | Built. Needs a public https address before Telegram will open it |
 | Real G2 glasses | Everything above ran in the simulator only. Camera, album and the "Still there?" prompt from head motion are untested, since the simulator sends no photos or motion |
-| Newest Telegram parts | The coordinator-only check, Mark OK button, private check-in nudges, backup request and eyes reaction are tested with a fake Telegram. I have not yet seen them on the real app |
+| Newest Telegram parts | The coordinator-only check, Mark OK button, private check-in nudges, backup request and eyes reaction are tested with a fake Telegram. The nudges, Mark OK, backup pin and reactions have now run on real Telegram. The plain-member refusal is covered by tests only (it needs a second account) |
 | Not built | A voice note copy of each spoken clue, and Telegram's new ephemeral messages |
 
 ## What this is not
