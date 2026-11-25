@@ -246,3 +246,17 @@ test('Mark OK rewrites the notice it was pressed on', async () => {
   assert.ok(tg.edits.some(([, mid, text]) => mid === notice.message_id && /Marked OK by Sam/.test(text)));
   assert.ok(vol);
 });
+
+test('anyone in the group can read the board; the OK hand and heart reach the lens as OK and Thanks', async () => {
+  const { bot, tg, engine, token } = await started();
+  await bot.handle(g('/status', from(99, 'Pat')));
+  assert.match(tg.out.at(-1).text, /Run: Elm/);
+  engine.clue(token, { text: 'Person inside', pos: { lat: 1, lng: 2 } }); await settle();
+  const pin = tg.out.find((m) => m.venue);
+  const react = (emoji, user) => bot.handle({ message_reaction: { chat: { id: -500 }, message_id: pin.message_id, user, old_reaction: [], new_reaction: [{ type: 'emoji', emoji }] } });
+  await react('\u{1F44C}', from(7, 'Sam'));
+  await react('\u2764', from(7, 'Sam'));
+  await react('\u{1F44D}', from(99, 'Pat')); // a plain member's reaction does nothing
+  const texts = engine.sync(token).replies.map((r) => r.text);
+  assert.deepEqual(texts, ['OK', 'Thanks']);
+});
