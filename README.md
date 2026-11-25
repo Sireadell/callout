@@ -40,7 +40,7 @@ npm test
 | Command | What it shows | Result today |
 |---|---|---|
 | `npm run proof` | A full run against a fake Telegram chat: pairing, clue pin, reply to the lens, missed check-in notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, and that no positions are kept afterwards | 20 of 20 checks pass, 31 messages sent |
-| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 83 of 83 pass |
+| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 84 of 84 pass |
 | `cd glasses; npm install; npm test` | Lens text and head-motion tests | 16 of 16 pass |
 
 ## What it uses from the Even Hub SDK
@@ -129,7 +129,7 @@ The AI only sees counts and clue words. No names, no positions. It runs on the s
 | Positions deleted at the end, none kept | `npm run proof`, `test/engine.test.js` | Tested |
 | No emergency, life-saving or health wording anywhere | `npm run proof`, `test/engine.test.js`, `glasses/test/view.test.js` | Tested |
 | "Still there?" from head motion | `glasses/test/motion.test.js` | Tested. The simulator sends no motion, so not tried live |
-| Voice, Discord buttons, AI lines, Mini App | `test/stt.test.js`, `test/ai.test.js`, `test/discord.test.js`, `test/miniapp.test.js` | Tested with fakes only. See "Not yet checked live" |
+| Voice, Discord buttons, Mini App | `test/stt.test.js`, `test/discord.test.js`, `test/miniapp.test.js` | Tested with fakes only. See "Not yet checked live" |
 | Double tap exit, swipe cancel, voice timer, dropping other voices | `glasses/src/main.js` | Built, no automated test. Not tried on real glasses |
 
 ## Bugs the live test found
@@ -151,7 +151,7 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 | Voice clue and spoken OK | Built. The speech to text step has run on real audio twice (a recorded clip, then a computer-spoken 4.8 second clip that came back word for word in 5.9 seconds, with the transcript deleted afterwards). Not tried with real glasses audio, since the simulator mic gives almost nothing |
 | Google Sheet | Ran for real with a service account: the Volunteers tab was read (3 names and areas) and a debrief row and a clue row were written, with no positions. Not yet run through the `/sheet`, `/import` and `/end` commands in Telegram |
 | Discord | The webhook notice reached a real Discord channel (1 second, one test message). Reply buttons need a Discord bot and are tested with fakes only |
-| AI reply and summary | Built and tested with fakes. Needs a Claude or OpenRouter key |
+| AI reply and summary | Ran for real through OpenRouter (Claude Haiku): a long reply came back as "Go to main road, wait by red car. Boat team arrives in 10 min" in 2.1 seconds, and a run summary in 2.6 seconds. If the Anthropic key has no credit, the server falls back to OpenRouter. Not yet run through a real `/end` in Telegram |
 | Mini App dashboard | Built. Needs a public https address before Telegram will open it |
 | Voice from someone else | Dropping frames the app marks as another speaker has not been tried with real audio |
 | `/end clear` | Tested with a fake Telegram only |

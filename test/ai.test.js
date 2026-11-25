@@ -118,3 +118,13 @@ test('a switched-off Sheets API is named plainly, not called "not shared"', asyn
     : { ok: false, status: 403, text: async () => '{"error":{"message":"Google Sheets API has not been used in project 1 before or it is disabled."}}' };
   await assert.rejects(() => makeSheet({ serviceAccount: sa, fetchImpl }).readVolunteers('abc'), /switched off/);
 });
+
+test('if the Anthropic key has no credit, OpenRouter answers instead', async () => {
+  const urls = [];
+  const ai = makeAi({ anthropicKey: 'a', openrouterKey: 'o', fetchImpl: async (url) => {
+    urls.push(url);
+    return url.includes('anthropic') ? { ok: false, status: 400, json: async () => ({}) } : { ok: true, json: async () => ({ choices: [{ message: { content: 'Wait by the red car' } }] }) };
+  } });
+  assert.equal(await ai.oneLine('Please go back to the main road and wait by the red car, the boat team is about ten minutes away'), 'Wait by the red car');
+  assert.equal(urls.length, 2);
+});

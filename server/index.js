@@ -25,7 +25,7 @@ const router = makeRouter({ engine, telegram, discord });
 engine.notify = router.notify;
 if (fs.existsSync(STATE)) engine.restore(JSON.parse(fs.readFileSync(STATE, 'utf8')));
 let bot = null;
-const ai = makeAi({ anthropicKey: process.env.ANTHROPIC_API_KEY, openrouterKey: process.env.OPENROUTER_API_KEY });
+const ai = makeAi({ anthropicKey: process.env.ANTHROPIC_API_KEY, openrouterKey: process.env.OPENROUTER_API_KEY, openrouterModel: process.env.OPENROUTER_MODEL || undefined });
 const sheet = process.env.GOOGLE_SERVICE_ACCOUNT_FILE && fs.existsSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE)
   ? makeSheet({ serviceAccount: JSON.parse(fs.readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE, 'utf8')) }) : null;
 

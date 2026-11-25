@@ -28,6 +28,7 @@ export function makeAi({ anthropicKey, openrouterKey, openrouterModel = 'anthrop
   async function ask(system, user, maxTokens) {
     const signal = AbortSignal.timeout(timeoutMs);
     if (anthropicKey) {
+      try {
       const r = await fetchImpl('https://api.anthropic.com/v1/messages', {
         method: 'POST', signal,
         headers: { 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -36,6 +37,7 @@ export function makeAi({ anthropicKey, openrouterKey, openrouterModel = 'anthrop
       if (!r.ok) throw new Error(`ai ${r.status}`);
       const j = await r.json();
       return String(j.content?.[0]?.text || '').trim();
+      } catch (e) { if (!openrouterKey) throw e; /* no credit or a bad key: try the other provider */ }
     }
     if (openrouterKey) {
       const r = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
