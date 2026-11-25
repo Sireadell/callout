@@ -114,6 +114,22 @@ The AI only sees counts and clue words. No names, no positions. It runs on the s
 | Display and voice | Plain glyphs only, since the lens drops emoji. Every gesture changes the screen. Double tap on the main screen opens the exit dialog |
 | Business and safety | Same wording on lens and bot: team notices only, not an emergency service. Positions deleted when the run ends |
 
+## How each claim is checked
+
+| Claim | How it is shown | Status |
+|---|---|---|
+| Clue becomes a map pin with four buttons, protected from forwarding | `npm run proof`, `test/bot.test.js` | Tested, seen on real Telegram |
+| Missed check-in: coordinator at 17 minutes, whole team at 22 | `npm run proof`, `test/engine.test.js` | Tested, seen on real Telegram with short timers |
+| Only the setup person or a group admin can run, end or reply | `test/review.test.js`, `npm run proof` | Tested with a fake Telegram. A plain-member refusal needs a second account |
+| Mark OK, private check-in nudges, backup request, eyes reaction | `test/review.test.js`, `npm run proof` | Tested, seen on real Telegram |
+| Offline queue keeps its own time (30 minute cap, never the future) | `test/review.test.js`, `glasses/test/view.test.js` | Tested. Not tried on real glasses |
+| `/interval`, fuller debrief, `/end clear` | `test/review.test.js` | Tested with a fake Telegram only |
+| Positions deleted at the end, none kept | `npm run proof`, `test/engine.test.js` | Tested |
+| No emergency, life-saving or health wording anywhere | `npm run proof`, `test/engine.test.js`, `glasses/test/view.test.js` | Tested |
+| "Still there?" from head motion | `glasses/test/motion.test.js` | Tested. The simulator sends no motion, so not tried live |
+| Voice, Sheet, Discord, AI lines, Mini App | `test/stt.test.js`, `test/ai.test.js`, `test/discord.test.js`, `test/miniapp.test.js` | Tested with fakes only. See "Not yet checked live" |
+| Double tap exit, swipe cancel, voice timer, dropping other voices | `glasses/src/main.js` | Built, no automated test. Not tried on real glasses |
+
 ## Bugs the live test found
 
 Running on the real app found three bugs that fakes had hidden. All three are fixed and have a test: the status board posted three times when notices arrived together, turning on Topics changed the group's id and the bot lost its team, and a photo failed because an empty button field was sent as the text "undefined".
