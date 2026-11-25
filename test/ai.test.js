@@ -107,3 +107,14 @@ test('an unshared sheet gives a plain error', async () => {
   const sheet = makeSheet({ serviceAccount: { client_email: 'bot@x.iam', private_key: g.privateKey.export({ type: 'pkcs8', format: 'pem' }) }, fetchImpl: async (u, i) => (u.includes('oauth2') ? g.fetchImpl(u, i) : { ok: false, status: 403 }) });
   await assert.rejects(sheet.readVolunteers('S'), /not shared/);
 });
+
+test('a switched-off Sheets API is named plainly, not called "not shared"', async () => {
+  const { makeSheet } = await import('../server/sheet.js');
+  const { generateKeyPairSync } = await import('node:crypto');
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const sa = { client_email: 'x@y.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) };
+  const fetchImpl = async (url) => url.includes('oauth2')
+    ? { ok: true, json: async () => ({ access_token: 'T', expires_in: 3600 }) }
+    : { ok: false, status: 403, text: async () => '{"error":{"message":"Google Sheets API has not been used in project 1 before or it is disabled."}}' };
+  await assert.rejects(() => makeSheet({ serviceAccount: sa, fetchImpl }).readVolunteers('abc'), /switched off/);
+});

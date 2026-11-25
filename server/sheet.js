@@ -35,7 +35,11 @@ export function makeSheet({ serviceAccount, fetchImpl = fetch, now = () => Date.
     const r = await fetchImpl(`https://sheets.googleapis.com/v4/spreadsheets/${path}`, {
       ...init, headers: { authorization: `Bearer ${await token()}`, 'content-type': 'application/json' },
     });
-    if (r.status === 403 || r.status === 404) throw new Error('sheet not shared with the Callout account');
+    if (r.status === 403 || r.status === 404) {
+      const why = typeof r.text === 'function' ? await r.text().catch(() => '') : '';
+      if (/has not been used|is disabled/i.test(why)) throw new Error('Google Sheets API is switched off for the Callout Google project');
+      throw new Error('sheet not shared with the Callout account');
+    }
     if (!r.ok) throw new Error(`sheet ${r.status}`);
     return r.json();
   }
