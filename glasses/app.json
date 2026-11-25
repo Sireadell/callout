@@ -6,8 +6,9 @@
   "min_app_version": "2.2.10",
   "min_sdk_version": "0.0.16",
   "entrypoint": "index.html",
+  "supported_languages": ["en"],
   "permissions": [
-    { "name": "network", "desc": "Sends check-ins and clues to your team's Callout server.", "whitelist": ["http://localhost:8787"] },
+    { "name": "network", "desc": "Sends check-ins and clues to your team's Callout server.", "whitelist": ["https://callout-dih6.onrender.com", "http://localhost:8787"] },
     { "name": "location", "desc": "Adds your position to check-ins during a run." },
     { "name": "camera", "desc": "Lets you add a photo to a clue." },
     { "name": "album", "desc": "Lets you add a photo from your album to a clue." },
