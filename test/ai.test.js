@@ -128,3 +128,32 @@ test('if the Anthropic key has no credit, OpenRouter answers instead', async () 
   assert.equal(await ai.oneLine('Please go back to the main road and wait by the red car, the boat team is about ten minutes away'), 'Wait by the red car');
   assert.equal(urls.length, 2);
 });
+
+test('the outside copy of the state has no positions, and round trips through the sheet in chunks', async () => {
+  const { withoutPositions } = await import('../server/persist.js');
+  const { makeSheet } = await import('../server/sheet.js');
+  const { generateKeyPairSync } = await import('node:crypto');
+  const snap = { teams: { t: { name: 'x' } }, tokens: { tok: 'v1' }, runs: { r: { volunteers: { v1: { name: 'Ana', pos: { lat: 1, lng: 2 }, trail: [[1, 2]] } }, clues: [{ text: 'a', pos: { lat: 1, lng: 2 } }] } } };
+  const clean = withoutPositions(snap);
+  assert.equal(clean.runs.r.volunteers.v1.pos, null);
+  assert.deepEqual(clean.runs.r.volunteers.v1.trail, []);
+  assert.equal(clean.runs.r.clues[0].pos, null);
+  assert.equal(snap.runs.r.volunteers.v1.pos.lat, 1, 'the original is untouched');
+  assert.equal(clean.tokens.tok, 'v1');
+
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const sa = { client_email: 'x@y', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) };
+  let stored = []; const tabs = new Set();
+  const fetchImpl = async (url, init = {}) => {
+    if (url.includes('oauth2')) return { ok: true, json: async () => ({ access_token: 'T', expires_in: 3600 }) };
+    if (url.includes('fields=sheets')) return { ok: true, json: async () => ({ sheets: [...tabs].map((title) => ({ properties: { title } })) }) };
+    if (url.includes(':batchUpdate')) { tabs.add(JSON.parse(init.body).requests[0].addSheet.properties.title); return { ok: true, json: async () => ({}) }; }
+    if (url.includes(':clear')) { stored = []; return { ok: true, json: async () => ({}) }; }
+    if (init.method === 'PUT') { stored = JSON.parse(init.body).values; return { ok: true, json: async () => ({}) }; }
+    return { ok: true, json: async () => ({ values: stored }) };
+  };
+  const sheet = makeSheet({ serviceAccount: sa, fetchImpl });
+  const big = { ...clean, filler: 'x'.repeat(90000) };
+  assert.equal(await sheet.writeState('id', big), 3, 'three chunks of at most 40000');
+  assert.deepEqual(await sheet.readState('id'), big);
+});

@@ -59,6 +59,21 @@ export function makeSheet({ serviceAccount, fetchImpl = fetch, now = () => Date.
       if (rows[0] && /^name$/i.test(rows[0][0])) rows.shift();
       return rows.slice(0, 40).map(([name, area]) => ({ name, area }));
     },
+    // A private copy of the server's state (teams, runs, pairings; no positions), so a host that wipes its
+    // disk on restart can pick up where it left off. Stored as text in tab "State", column A, in chunks.
+    async writeState(id, state) {
+      await ensureTab(id, 'State');
+      const text = JSON.stringify(state);
+      const rows = []; for (let i = 0; i < text.length; i += 40000) rows.push([text.slice(i, i + 40000)]);
+      await api(`${id}/values/${encodeURIComponent('State!A:A')}:clear`, { method: 'POST', body: '{}' });
+      await api(`${id}/values/${encodeURIComponent('State!A1')}?valueInputOption=RAW`, { method: 'PUT', body: JSON.stringify({ values: rows.length ? rows : [['']] }) });
+      return rows.length;
+    },
+    async readState(id) {
+      let j; try { j = await api(`${id}/values/${encodeURIComponent('State!A:A')}`); } catch { return null; }
+      const text = (j.values || []).map((r) => r[0] || '').join('');
+      try { return text ? JSON.parse(text) : null; } catch { return null; }
+    },
     // Debrief out: one row per volunteer, one row per clue. No positions are written.
     async writeDebrief(id, d, summary = '') {
       await ensureTab(id, 'Debrief'); await ensureTab(id, 'Clues');

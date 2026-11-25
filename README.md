@@ -40,7 +40,7 @@ npm test
 | Command | What it shows | Result today |
 |---|---|---|
 | `npm run proof` | A full run against a fake Telegram chat: pairing, clue pin, reply to the lens, missed check-in notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, and that no positions are kept afterwards | 20 of 20 checks pass, 31 messages sent |
-| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 84 of 84 pass |
+| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 85 of 85 pass |
 | `cd glasses; npm install; npm test` | Lens text and head-motion tests | 16 of 16 pass |
 
 ## What it uses from the Even Hub SDK
@@ -171,6 +171,8 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 ## Privacy and consent
 
 Everyone in a run's group agrees that their position is shared with the group while the run is active. Positions are deleted when the run ends.
+
+If you host Callout somewhere that wipes its disk on restart, set `STATE_SHEET_ID` and the server keeps a private copy of its teams, runs and pairing codes in your own Google Sheet (no positions, no trails). Without it, nothing leaves the server.
 
 Voice is turned into text on the server, and the transcript is deleted at the speech provider as soon as the words come back. Photos are passed straight to the group. The server keeps neither. Pairing codes work once and expire after 15 minutes.
 

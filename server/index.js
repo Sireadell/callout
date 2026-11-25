@@ -11,6 +11,7 @@ import { makeStt } from './stt.js';
 import { makeAi } from './ai.js';
 import { makeMiniApp } from './miniapp.js';
 import { makeSheet } from './sheet.js';
+import { withoutPositions } from './persist.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const PORT = Number(process.env.PORT || 8787);
@@ -28,10 +29,24 @@ let bot = null;
 const ai = makeAi({ anthropicKey: process.env.ANTHROPIC_API_KEY, openrouterKey: process.env.OPENROUTER_API_KEY, openrouterModel: process.env.OPENROUTER_MODEL || undefined });
 const sheet = process.env.GOOGLE_SERVICE_ACCOUNT_FILE && fs.existsSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE)
   ? makeSheet({ serviceAccount: JSON.parse(fs.readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE, 'utf8')) }) : null;
+// A host that wipes its disk on restart: pick the state back up from the Sheet copy (no positions).
+if (!fs.existsSync(STATE) && sheet && process.env.STATE_SHEET_ID) {
+  const copy = await sheet.readState(process.env.STATE_SHEET_ID);
+  if (copy) { engine.restore(copy); console.log('Restored state from the Sheet copy'); }
+}
 
-// Save to disk every few seconds when something changed.
+// Save to disk every few seconds when something changed. With STATE_SHEET_ID set, also keep a copy in the Sheet.
 let lastSaved = '';
+let lastRemote = ''; let remoteAt = 0;
+async function saveRemote() {
+  if (!sheet || !process.env.STATE_SHEET_ID || Date.now() - remoteAt < 30_000) return;
+  const s = JSON.stringify(withoutPositions(engine.snapshot()));
+  if (s === lastRemote) return;
+  remoteAt = Date.now();
+  try { await sheet.writeState(process.env.STATE_SHEET_ID, JSON.parse(s)); lastRemote = s; } catch (e) { console.log('state copy failed:', e.message); }
+}
 function save() {
+  saveRemote();
   const s = JSON.stringify(engine.snapshot());
   if (s === lastSaved) return;
   fs.mkdirSync('data', { recursive: true });
