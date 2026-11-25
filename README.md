@@ -129,7 +129,7 @@ The AI only sees counts and clue words. No names, no positions. It runs on the s
 | Positions deleted at the end, none kept | `npm run proof`, `test/engine.test.js` | Tested |
 | No emergency, life-saving or health wording anywhere | `npm run proof`, `test/engine.test.js`, `glasses/test/view.test.js` | Tested |
 | "Still there?" from head motion | `glasses/test/motion.test.js` | Tested. The simulator sends no motion, so not tried live |
-| Voice, Sheet, Discord, AI lines, Mini App | `test/stt.test.js`, `test/ai.test.js`, `test/discord.test.js`, `test/miniapp.test.js` | Tested with fakes only. See "Not yet checked live" |
+| Voice, Sheet, Discord buttons, AI lines, Mini App | `test/stt.test.js`, `test/ai.test.js`, `test/discord.test.js`, `test/miniapp.test.js` | Tested with fakes only. See "Not yet checked live" |
 | Double tap exit, swipe cancel, voice timer, dropping other voices | `glasses/src/main.js` | Built, no automated test. Not tried on real glasses |
 
 ## Bugs the live test found
@@ -150,7 +150,7 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 |---|---|
 | Voice clue and spoken OK | Built. Speech to text worked on one real recorded clip. Not tried with real glasses audio, since the simulator mic gives almost nothing |
 | Google Sheet | Built and tested with fakes. Needs a Google service account to run for real |
-| Discord | Built and tested with fakes. Needs a webhook (and a bot for buttons) |
+| Discord | The webhook notice reached a real Discord channel (1 second, one test message). Reply buttons need a Discord bot and are tested with fakes only |
 | AI reply and summary | Built and tested with fakes. Needs a Claude or OpenRouter key |
 | Mini App dashboard | Built. Needs a public https address before Telegram will open it |
 | Voice from someone else | Dropping frames the app marks as another speaker has not been tried with real audio |
