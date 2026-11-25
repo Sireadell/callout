@@ -30,3 +30,13 @@ test('a 429 answer waits retry_after plus one second and tries once more', async
   assert.equal(r.message_id, 9);
   assert.deepEqual(waits, [5000]);
 });
+
+test('a dropped connection is tried once more, then the error is passed on', async () => {
+  let n = 0;
+  const ok = new Telegram('T', { minGapMs: 0, sleep: async () => {}, fetchImpl: async () => { n += 1; if (n === 1) throw new TypeError('fetch failed'); return { json: async () => ({ ok: true, result: { message_id: 3 } }) }; } });
+  assert.equal((await ok.call('sendMessage', { chat_id: 1, text: 'x' })).message_id, 3);
+  let m = 0;
+  const bad = new Telegram('T', { minGapMs: 0, sleep: async () => {}, fetchImpl: async () => { m += 1; throw new TypeError('fetch failed'); } });
+  await assert.rejects(() => bad.call('sendMessage', { chat_id: 1, text: 'x' }), /fetch failed/);
+  assert.equal(m, 2);
+});

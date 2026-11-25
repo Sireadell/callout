@@ -13,9 +13,17 @@ export class Telegram {
   }
 
   async call(method, body = {}, { retry = true } = {}) {
-    const res = await this.fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-    });
+    let res;
+    try {
+      res = await this.fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+    } catch (e) {
+      // A dropped connection never reached Telegram. Try once more instead of losing a check-in notice.
+      if (!retry) throw e;
+      await this.sleep(1000);
+      return this.call(method, body, { retry: false });
+    }
     const data = await res.json().catch(() => ({}));
     if (data.ok) return data.result;
     const wait = data.parameters?.retry_after;

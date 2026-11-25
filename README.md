@@ -6,6 +6,8 @@ I built it because people doing this work have their hands full. Phones stay in 
 
 > Has everyone on my team checked in, and if not, who and where were they last?
 
+**Measured on real Telegram: a clue sent from the server shows up as a map pin in the team group in about 0.65 seconds** (626, 633, 662 and 687 ms on four clues). That times the server to Telegram leg only, not the glasses to phone leg.
+
 ## A flood night with Callout
 
 Six volunteers are checking houses on Elm Street. Each one sees this on the lens:
@@ -38,7 +40,7 @@ npm test
 | Command | What it shows | Result today |
 |---|---|---|
 | `npm run proof` | A full run against a fake Telegram chat: pairing, clue pin, reply to the lens, missed check-in notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, and that no positions are kept afterwards | 20 of 20 checks pass, 31 messages sent |
-| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 81 of 81 pass |
+| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 82 of 82 pass |
 | `cd glasses; npm install; npm test` | Lens text and head-motion tests | 16 of 16 pass |
 
 ## What it uses from the Even Hub SDK
@@ -132,7 +134,7 @@ The AI only sees counts and clue words. No names, no positions. It runs on the s
 
 ## Bugs the live test found
 
-Running on the real app found three bugs that fakes had hidden. All three are fixed and have a test: the status board posted three times when notices arrived together, turning on Topics changed the group's id and the bot lost its team, and a photo failed because an empty button field was sent as the text "undefined".
+Running on the real app found four bugs that fakes had hidden. All four are fixed and have a test: the status board posted three times when notices arrived together, turning on Topics changed the group's id and the bot lost its team, a photo failed because an empty button field was sent as the text "undefined", and a dropped connection lost the message (about 1 send in 8 on my Wi-Fi), so the server now tries once more.
 
 ## What I've seen work on real Telegram
 
