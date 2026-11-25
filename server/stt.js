@@ -14,6 +14,8 @@ export function pcmToWav(pcm, rate = RATE) {
 
 export function makeStt({ apiKey, fetchImpl = fetch, sleep = sleepReal, maxWaitMs = 20000 } = {}) {
   const headers = { authorization: apiKey };
+  // Ask the provider to delete the transcript and its audio as soon as we have the words. Best effort.
+  const forget = (id) => { Promise.resolve(fetchImpl(`https://api.assemblyai.com/v2/transcript/${id}`, { method: 'DELETE', headers })).catch(() => {}); };
   async function transcribe(pcm) {
     if (!apiKey) throw new Error('speech to text is not set up');
     if (!pcm?.length || pcm.length < RATE * 2 * 0.3) return ''; // under 0.3 s: nothing to hear
@@ -30,8 +32,8 @@ export function makeStt({ apiKey, fetchImpl = fetch, sleep = sleepReal, maxWaitM
     while (waited <= maxWaitMs) {
       const r = await fetchImpl(`https://api.assemblyai.com/v2/transcript/${id}`, { headers });
       const j = await r.json();
-      if (j.status === 'completed') return (j.text || '').trim();
-      if (j.status === 'error') throw new Error('could not transcribe');
+      if (j.status === 'completed') { forget(id); return (j.text || '').trim(); }
+      if (j.status === 'error') { forget(id); throw new Error('could not transcribe'); }
       await sleep(700); waited += 700;
     }
     throw new Error('speech to text timed out');

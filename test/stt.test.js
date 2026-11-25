@@ -20,6 +20,7 @@ test('uploads, starts, polls until done and returns the text', async () => {
     calls.push(url);
     if (url.endsWith('/upload')) return json({ upload_url: 'https://cdn/x' });
     if (url.endsWith('/transcript')) return json({ id: 't1' });
+    if (opts.method === 'DELETE') return json({});
     polls += 1;
     return json(polls < 3 ? { status: 'processing' } : { status: 'completed', text: ' Road blocked ' });
   };
@@ -43,4 +44,16 @@ test('gives up after the wait limit', async () => {
   const fetchImpl = async (url) => (url.endsWith('/upload') ? json({ upload_url: 'u' }) : url.endsWith('/transcript') ? json({ id: 't' }) : json({ status: 'processing' }));
   const stt = makeStt({ apiKey: 'k', fetchImpl, sleep: async () => {}, maxWaitMs: 2000 });
   await assert.rejects(stt.transcribe(Buffer.alloc(64000)), /timed out/);
+});
+
+test('the transcript is deleted at the provider once we have the words', async () => {
+  const methods = [];
+  const fetchImpl = async (url, opts = {}) => {
+    methods.push(`${opts.method || 'GET'} ${url.split('/v2/')[1]}`);
+    if (url.endsWith('/upload')) return json({ upload_url: 'https://cdn/x' });
+    if (url.endsWith('/transcript')) return json({ id: 't9' });
+    return json({ status: 'completed', text: 'ok' });
+  };
+  await makeStt({ apiKey: 'k', fetchImpl, sleep: async () => {} }).transcribe(Buffer.alloc(64000));
+  assert.ok(methods.includes('DELETE transcript/t9'));
 });

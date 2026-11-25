@@ -4,6 +4,8 @@ const ICON = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '�
 // Loud notices buzz phones. Everything else arrives quietly.
 const LOUD = new Set(['missed_checkin', 'missed_checkin_team', 'went_silent', 'still', 'need_backup', 'nudge_overdue']);
 // Notices that carry a position or a person's details cannot be forwarded or saved from the chat.
+// Notices that show a position. With "/end clear" they are deleted from the chat after the run.
+const POS_KINDS = new Set(['clue', 'clue_photo', 'need_backup', 'missed_checkin', 'missed_checkin_team', 'went_silent', 'battery_low', 'glasses_off', 'still', 'back_in_touch']);
 const OPEN = new Set(['run_started', 'joined', 'debrief', 'summary']);
 export const PRESETS = ['Stay where you are', 'Move to your next area', 'Return to base', 'Call me'];
 
@@ -97,6 +99,7 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
       sent = await post();
     }
     if (run && n.volunteerId) (run.msgIndex ||= {})[`${chat}:${sent.message_id}`] = n.volunteerId;
+    if (run && POS_KINDS.has(n.kind)) (run.posMsgs ||= []).push([chat, sent.message_id]);
     if (run && (n.kind === 'clue' || n.kind === 'need_backup')) (run.clueMsg ||= {})[`${chat}:${n.clueId}`] = sent.message_id;
     if (run && n.kind === 'debrief') await stopLive(run.id);
   }
@@ -106,6 +109,7 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
     if (!team) return;
     if (n.kind === 'run_closed') { // last step of a run: close its topic
       const run = engine.runs[n.runId];
+      if (n.clear && run && team.telegram && telegram) { for (const [c, id] of run.posMsgs || []) await telegram.deleteMessage?.(c, id).catch(() => {}); run.posMsgs = []; }
       if (run?.topicId && team.telegram && telegram) await telegram.closeForumTopic(team.telegram.chatId, run.topicId).catch(() => {});
       return;
     }
@@ -171,6 +175,7 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
           const m = await telegram.sendLiveLocation(chat, v.pos.lat, v.pos.lng, { disable_notification: true, protect_content: true, reply_to_message_id: label.message_id, ...th });
           live[v.id] = { messageId: m.message_id, lat: v.pos.lat, lng: v.pos.lng, at: now };
           (run.msgIndex ||= {})[`${chat}:${label.message_id}`] = v.id;
+          (run.posMsgs ||= []).push([chat, label.message_id], [chat, m.message_id]);
         } else if (L.messageId && now - L.at >= MIN_GAP_MS && metres(L, v.pos) >= MIN_MOVE_M) {
           const heading = bearing(L, v.pos);
           await telegram.editLiveLocation(chat, L.messageId, v.pos.lat, v.pos.lng, heading);

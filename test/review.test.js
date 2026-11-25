@@ -6,12 +6,13 @@ import { makeBot } from '../server/bot.js';
 
 // A fake Telegram that can refuse private chats, like a real bot does for people who never pressed Start.
 function fake({ blocked = [], admins = [] } = {}) {
-  let id = 100; const out = []; const answers = []; const reactions = [];
+  let id = 100; const out = []; const answers = []; const reactions = []; const deleted = []; const edits = [];
   return {
-    out, answers, reactions, blocked,
+    out, answers, reactions, blocked, deleted, edits,
+    deleteMessage: async (c, mid) => { deleted.push([c, mid]); },
     send: async (chat, text, extra = {}) => { if (blocked.includes(chat)) throw new Error('Forbidden: bot cant initiate'); const m = { chat, text, extra, message_id: ++id }; out.push(m); return m; },
     sendVenue: async (chat, lat, lng, title, address, extra = {}) => { const m = { chat, text: `${title} @ ${address}`, venue: true, extra, message_id: ++id }; out.push(m); return m; },
-    edit: async () => ({}), pin: async () => {}, stopLiveLocation: async () => {},
+    edit: async (c, mid, text) => { edits.push([c, mid, text]); return {}; }, pin: async () => {}, stopLiveLocation: async () => {},
     answerCallback: async (qid, text) => { answers.push(text); },
     setReaction: async (chat, mid, emoji) => { reactions.push([chat, mid, emoji]); },
     getChatMember: async (chat, user) => ({ status: admins.includes(user) ? 'administrator' : 'member' }),
@@ -221,4 +222,27 @@ test('a clue held back says it was sent late', async () => {
   engine.clue(token, { text: 'Road blocked', pos: { lat: 1, lng: 2 }, at: clock.t - 5 * 60_000 });
   await settle();
   assert.ok(tg.out.some((m) => /sent 5 min late/.test(m.text || '')));
+});
+
+test('/end clear deletes the messages that show positions; a plain /end leaves them', async () => {
+  for (const clear of [false, true]) {
+    const { bot, tg, engine, token } = await started();
+    engine.clue(token, { text: 'Person inside', pos: { lat: 1, lng: 2 } }); await settle();
+    const pin = tg.out.find((m) => m.venue);
+    await bot.handle(g(clear ? '/end clear' : '/end')); await settle(); await settle();
+    const gone = tg.deleted.some(([, id]) => id === pin.message_id);
+    assert.equal(gone, clear);
+    assert.ok(!tg.deleted.some(([, id]) => /Run "/.test(tg.out.find((m) => m.message_id === id)?.text || '')), 'the debrief stays');
+  }
+});
+
+test('Mark OK rewrites the notice it was pressed on', async () => {
+  const { bot, tg, engine, clock, vol } = await started();
+  clock.advance(engine.cfg.checkinMs + engine.cfg.coordinatorGraceMs + 1000);
+  engine.tick(); await settle();
+  const notice = tg.out.find((m) => /Missed check-in notice/.test(m.text || ''));
+  const data = notice.extra.reply_markup.inline_keyboard.flat().find((b) => /^ok[|]/.test(b.callback_data)).callback_data;
+  await bot.handle({ callback_query: { id: 'q', data, from: from(7, 'Sam'), message: { chat: { id: -500 }, message_id: notice.message_id, text: notice.text } } });
+  assert.ok(tg.edits.some(([, mid, text]) => mid === notice.message_id && /Marked OK by Sam/.test(text)));
+  assert.ok(vol);
 });

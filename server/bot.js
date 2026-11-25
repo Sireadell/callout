@@ -15,7 +15,7 @@ const HELP = [
   '/app  open the team dashboard (in a private chat with me)',
   '/sheet <link>  connect a Google Sheet (tab Volunteers: name, area)',
   '/import  add every volunteer listed in the sheet',
-  '/end  finish the run and post the debrief',
+  '/end  finish the run and post the debrief (/end clear also deletes the position messages)',
   'Team notices only. This is not an emergency service.',
 ].join('\n');
 
@@ -146,7 +146,7 @@ Everyone who joins agrees to share their position with this group while the run 
         try { const r = await sheet.writeDebrief(team.sheetId, debrief, summary); await say(chatId, `Debrief written to your sheet (${r.people} people, ${r.clues} clues).`, { disable_notification: true }); }
         catch (e) { await say(chatId, `Could not write to the sheet: ${e.message}`); }
       }
-      engine.announce(run.id, 'team', 'run_closed', '');
+      engine.announce(run.id, 'team', 'run_closed', '', { clear: arg.trim().toLowerCase() === 'clear' });
       return;
     }
     return say(chatId, HELP);
@@ -245,6 +245,9 @@ Everyone who joins agrees to share their position with this group while the run 
       }
       if (kind === 'ok') {
         engine.markOk(run.id, v.id, q.from.first_name || 'coordinator');
+        // The notice itself says it was handled, and loses its buttons.
+        if (q.message?.message_id) telegram.edit(chat, q.message.message_id, `${q.message.text || 'Notice'}
+Marked OK by ${q.from.first_name || 'coordinator'}.`).catch(() => {});
         return telegram.answerCallback(q.id, `${v.name} marked OK`);
       }
     } catch { /* fall through */ }

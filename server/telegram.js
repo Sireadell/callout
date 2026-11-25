@@ -80,6 +80,7 @@ export class Telegram {
   pin(chatId, messageId) {
     return this.call('pinChatMessage', { chat_id: chatId, message_id: messageId, disable_notification: true });
   }
+  deleteMessage(chatId, messageId) { return this.call('deleteMessage', { chat_id: chatId, message_id: messageId }); }
   getMe() { return this.call('getMe'); }
   getChatMember(chatId, userId) { return this.call('getChatMember', { chat_id: chatId, user_id: userId }); }
   // Commands shown in the "/" menu, per audience (scope), so volunteers and coordinators see different lists.

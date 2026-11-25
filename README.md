@@ -23,7 +23,7 @@ Ana taps the ring to check in. At a house with someone inside, she taps Clue and
 
 Ben misses his check-in. At 17 minutes the coordinator gets a notice with Ben's last position. At 22 minutes the whole team is told. When Ben checks in, the group sees that too.
 
-At `/end`, the debrief goes to Telegram (and Discord and a Google Sheet if set up), and every position is deleted.
+At `/end`, the debrief goes to Telegram (and Discord and a Google Sheet if set up), and the server deletes every position. Map pins and notices that show coordinates stay in the group, protected from forwarding, unless the coordinator sends `/end clear`, which also deletes them.
 
 ## Check it in one minute
 
@@ -38,8 +38,25 @@ npm test
 | Command | What it shows | Result today |
 |---|---|---|
 | `npm run proof` | A full run against a fake Telegram chat: pairing, clue pin, reply to the lens, missed check-in notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, and that no positions are kept afterwards | 20 of 20 checks pass, 31 messages sent |
-| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 75 of 75 pass |
+| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 78 of 78 pass |
 | `cd glasses; npm install; npm test` | Lens text and head-motion tests | 16 of 16 pass |
+
+## What it uses from the Even Hub SDK
+
+| Part of the SDK | How Callout uses it |
+|---|---|
+| Startup page and text container | The glance screen: run, area, check-in clock, team count, last reply |
+| Text update in place | The clock and notices change without rebuilding the screen |
+| Menu | Check in, clue by voice, quick clue, ask team for backup, repeat reply, photo, sign out |
+| List container | The four quick clues, one tap each |
+| Tap, double tap and swipe events | Tap checks in or says "got it". Double tap opens the exit dialog. Swipe cancels |
+| Microphone audio | Voice clue and the spoken "OK", with the wearer's own voice kept and frames marked as someone else dropped |
+| Motion sensor | "Still there?" after about five minutes with no head movement |
+| Device status | Battery, worn, in case and connection, sent to the coordinator as plain facts |
+| App location | Last known position on clues, check-ins and the live location |
+| Camera and photo album | A photo on the last clue |
+| Local storage | The pairing token and the queue of items waiting for signal |
+| Exit dialog | Double tap and Sign out both end with the system exit dialog |
 
 ## Track 1, Messaging and News: Telegram is the core
 
@@ -97,6 +114,10 @@ The AI only sees counts and clue words. No names, no positions. It runs on the s
 | Display and voice | Plain glyphs only, since the lens drops emoji. Every gesture changes the screen. Double tap on the main screen opens the exit dialog |
 | Business and safety | Same wording on lens and bot: team notices only, not an emergency service. Positions deleted when the run ends |
 
+## Bugs the live test found
+
+Running on the real app found three bugs that fakes had hidden. All three are fixed and have a test: the status board posted three times when notices arrived together, turning on Topics changed the group's id and the bot lost its team, and a photo failed because an empty button field was sent as the text "undefined".
+
 ## What I've seen work on real Telegram
 
 I ran a full run on the live Telegram app with my own bot and group:
@@ -114,6 +135,8 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 | Discord | Built and tested with fakes. Needs a webhook (and a bot for buttons) |
 | AI reply and summary | Built and tested with fakes. Needs a Claude or OpenRouter key |
 | Mini App dashboard | Built. Needs a public https address before Telegram will open it |
+| Voice from someone else | Dropping frames the app marks as another speaker has not been tried with real audio |
+| `/end clear` | Tested with a fake Telegram only |
 | Real G2 glasses | Everything above ran in the simulator only. Camera, album and the "Still there?" prompt from head motion are untested, since the simulator sends no photos or motion |
 | Newest Telegram parts | The coordinator-only check, Mark OK button, private check-in nudges, backup request and eyes reaction are tested with a fake Telegram. The nudges, Mark OK, backup pin and reactions have now run on real Telegram. The plain-member refusal is covered by tests only (it needs a second account) |
 | Not built | A voice note copy of each spoken clue, and Telegram's new ephemeral messages |
@@ -131,7 +154,7 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 
 Everyone in a run's group agrees that their position is shared with the group while the run is active. Positions are deleted when the run ends.
 
-Voice is turned into text on the server and photos are passed straight to the group. Neither is stored. Pairing codes work once and expire after 15 minutes.
+Voice is turned into text on the server, and the transcript is deleted at the speech provider as soon as the words come back. Photos are passed straight to the group. The server keeps neither. Pairing codes work once and expire after 15 minutes.
 
 ## Run it with your own bot
 
