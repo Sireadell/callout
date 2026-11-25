@@ -65,7 +65,7 @@ const miniapp = process.env.TELEGRAM_BOT_TOKEN ? makeMiniApp({ engine, botToken:
 const stt = makeStt({ apiKey: process.env.ASSEMBLYAI_API_KEY });
 const routes = {
   'POST /api/pair': (b) => engine.pair(b.code),
-  'POST /api/checkin': (b) => engine.checkIn(b.token, { pos: b.pos }),
+  'POST /api/checkin': (b) => engine.checkIn(b.token, { pos: b.pos, at: b.at }),
   'POST /api/heartbeat': (b) => { engine.heartbeat(b.token, b); return { ok: true }; },
   'POST /api/clue': (b) => { const c = engine.clue(b.token, b); return { id: c.id }; },
   'POST /api/signout': (b) => { engine.signOut(b.token); return { ok: true }; },

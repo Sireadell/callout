@@ -198,3 +198,27 @@ test('the debrief carries first and last check-in, Mark OK and sign-out, and no 
   assert.equal(v.signedOut, true);
   assert.match(engine.debriefText(d), /marked OK 1x, signed out/);
 });
+
+test('a check-in held back by bad signal keeps its own time, capped to 30 minutes and never the future', async () => {
+  const { engine, clock, token, vol } = await started();
+  const t0 = clock.t;
+  clock.advance(10 * 60_000);
+  engine.checkIn(token, { at: t0 + 4 * 60_000 });
+  assert.equal(vol.lastCheckin, t0 + 4 * 60_000, 'uses the time it was made');
+  clock.advance(5 * 60_000);
+  engine.checkIn(token, { at: clock.t + 999_999 });
+  assert.equal(vol.lastCheckin, clock.t, 'a time in the future is ignored');
+  clock.advance(60 * 60_000);
+  engine.checkIn(token, { at: clock.t - 50 * 60_000 });
+  assert.equal(vol.lastCheckin, clock.t - 30 * 60_000, 'older than 30 minutes is capped');
+  engine.checkIn(token, { at: 'nonsense' });
+  assert.equal(vol.lastCheckin, clock.t);
+});
+
+test('a clue held back says it was sent late', async () => {
+  const { engine, clock, token, tg } = await started();
+  clock.advance(6 * 60_000);
+  engine.clue(token, { text: 'Road blocked', pos: { lat: 1, lng: 2 }, at: clock.t - 5 * 60_000 });
+  await settle();
+  assert.ok(tg.out.some((m) => /sent 5 min late/.test(m.text || '')));
+});

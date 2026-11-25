@@ -63,3 +63,8 @@ test('backup and reply screens use team words, no alarm words', async () => {
   assert.match(all, /Sam: Return to base/);
   assert.doesNotMatch(all, /SOS|emergency|urgent|help is coming|\p{Extended_Pictographic}/u);
 });
+
+test('the lens says how many items wait for signal', () => {
+  const t = glanceText({ token: 't', syncedAt: 0, queue: [{}, {}], sync: { runName: 'E', area: 'A', dueInMs: 1000, team: [] } }, 0);
+  assert.match(t, /2 waiting to send/);
+});

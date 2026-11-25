@@ -93,11 +93,19 @@ export class Engine {
   }
 
   // ---------- events from the glasses app ----------
-  checkIn(token, { pos } = {}) {
+  // The glasses app can hold a check-in until the signal returns and send it with the time it was made.
+  // That time is capped: never in the future, never more than 30 minutes old, never before the last check-in.
+  _when(v, at) {
+    const now = this.clock.now();
+    if (typeof at !== 'number' || !Number.isFinite(at)) return now;
+    return Math.min(now, Math.max(at, now - 30 * 60_000, v.lastCheckin || 0));
+  }
+
+  checkIn(token, { pos, at } = {}) {
     const { run, v } = this._auth(token);
     this._touch(v, pos);
     const prevStep = v.step;
-    v.lastCheckin = this.clock.now();
+    v.lastCheckin = this._when(v, at);
     v.step = 0;
     v.nudge = 0;
     v.checkins += 1;
@@ -133,13 +141,15 @@ export class Engine {
     } else if (!still) v.flags.still = false;
   }
 
-  clue(token, { text, pos, voiceNoteId = null, photoId = null }) {
+  clue(token, { text, pos, voiceNoteId = null, photoId = null, at = undefined }) {
     const { run, v } = this._auth(token);
     this._touch(v, pos);
-    const clue = { id: newId('clue'), volunteerId: v.id, text: String(text || '').slice(0, 500), pos: v.pos, voiceNoteId, photoId, at: this.clock.now() };
+    const madeAt = this._when({ lastCheckin: 0 }, at);
+    const lateMin = mins(this.clock.now() - madeAt);
+    const clue = { id: newId('clue'), volunteerId: v.id, text: String(text || '').slice(0, 500), pos: v.pos, voiceNoteId, photoId, at: madeAt };
     run.clues.push(clue);
-    this._emit(run, 'team', 'clue', `${v.name} (${v.area}): ${clue.text} [${place(clue.pos)}]`, {
-      volunteerId: v.id, clueId: clue.id, clueText: clue.text, who: `${v.name} (${v.area})`, pos: clue.pos,
+    this._emit(run, 'team', 'clue', `${v.name} (${v.area}): ${clue.text}${lateMin >= 1 ? ` (sent ${lateMin} min late)` : ''} [${place(clue.pos)}]`, {
+      volunteerId: v.id, clueId: clue.id, clueText: clue.text, who: `${v.name} (${v.area})${lateMin >= 1 ? `, sent ${lateMin} min late` : ''}`, pos: clue.pos,
     });
     return clue;
   }

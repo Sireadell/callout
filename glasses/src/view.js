@@ -31,6 +31,7 @@ export function glanceText(state, now = Date.now()) {
   const d = state.device || {};
   if (typeof d.batteryLevel === 'number' && d.batteryLevel <= 15 && !d.isCharging) lines.push('', `▲ Glasses battery ${d.batteryLevel}%`);
   else if (now - state.syncedAt > 20000) lines.push('', '○ No signal. Will retry.');
+  if (state.queue?.length) lines.push('', `○ ${state.queue.length} waiting to send`);
   if (state.flash) lines.push('', state.flash);
   else if (s.replies?.length) lines.push('', `Reply: ${s.replies.at(-1).text}`);
   else lines.push('', 'Tap = check in. Double tap = exit.');

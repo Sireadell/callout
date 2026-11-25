@@ -129,7 +129,32 @@ function showConfirm(text) {
 }
 
 async function sendClue(text) {
-  try { const r = await api('/api/clue', { text, pos: await pos() }); state.lastClueId = r.id; flash('● Clue sent'); } catch { flash('▲ Not sent. Try again'); }
+  const here = await pos();
+  try { const r = await api('/api/clue', { text, pos: here }); state.lastClueId = r.id; flash('● Clue sent'); }
+  catch (e) { if (isNetwork(e)) hold('/api/clue', { text, pos: here }, 'Clue'); else flash('▲ Not sent. Try again'); }
+}
+
+// ---- no signal: keep check-ins and clues, send them in order when the server answers again ----
+// Each keeps the time it was made. The server caps that time (never the future, at most 30 minutes old).
+const isNetwork = (e) => e instanceof TypeError || /quiet/.test(e?.message || '');
+function saveQueue() { bridge?.setLocalStorage('callout.queue', JSON.stringify(state.queue)).catch(() => {}); }
+function hold(path, body, label) {
+  (state.queue ||= []).push({ path, body, at: Date.now() });
+  if (state.queue.length > 20) state.queue.shift();
+  saveQueue(); flash(`○ ${label} saved. Sends when signal returns`, 5000);
+}
+let flushing = false;
+async function flush() {
+  if (flushing || !state.queue?.length || !state.token) return;
+  flushing = true;
+  try {
+    while (state.queue.length) {
+      const item = state.queue[0];
+      try { await api(item.path, { ...item.body, at: item.at }); }
+      catch (e) { if (isNetwork(e)) break; } // a refusal from the server drops the item so it cannot block the rest
+      state.queue.shift(); saveQueue();
+    }
+  } finally { flushing = false; }
 }
 
 // ---- photo for the last clue: never needed for the core flow, added after the clue ----
@@ -202,6 +227,7 @@ async function sync() {
   try {
     state.sync = await api('/api/sync', { pos: await pos() });
     state.syncedAt = Date.now();
+    flush();
     if (state.sync.replies?.length) {
       const last = state.sync.replies.at(-1);
       state.lastReply = last.full || last.text;
@@ -215,8 +241,9 @@ async function sync() {
 
 async function checkIn() {
   if (!state.token) return flash('Pair first');
-  try { await api('/api/checkin', { pos: await pos() }); flash('● Checked in'); await sync(); }
-  catch { flash('▲ Not sent. Try again'); }
+  const here = await pos();
+  try { await api('/api/checkin', { pos: here }); flash('● Checked in'); await sync(); }
+  catch (e) { if (isNetwork(e)) hold('/api/checkin', { pos: here }, 'Check-in'); else flash('▲ Not sent. Try again'); }
 }
 
 async function heartbeat() {
@@ -313,6 +340,7 @@ function onEvent(e) {
 async function start() {
   bridge = await waitForEvenAppBridge();
   state.token = (await bridge.getLocalStorage('callout.token')) || null;
+  try { state.queue = JSON.parse((await bridge.getLocalStorage('callout.queue')) || '[]'); } catch { state.queue = []; }
   const res = await bridge.createStartUpPageContainer(TEXT_PAGE());
   if (res !== StartUpPageCreateResult.success) console.warn('startup page', res);
   bridge.onEvenHubEvent(onEvent);
