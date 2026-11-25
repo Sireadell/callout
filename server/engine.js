@@ -31,6 +31,17 @@ export class Engine {
     this.tokens = {};
   }
 
+  // Check-in gap for a run: set with /interval, else the default.
+  gap(run) { return run.checkinMs || this.cfg.checkinMs; }
+  setGap(runId, minutes) {
+    const run = this._run(runId);
+    const m = Math.round(Number(minutes));
+    if (!(m >= 5 && m <= 60)) throw new Error('between 5 and 60 minutes');
+    run.checkinMs = m * 60_000;
+    this._emit(run, 'team', 'interval', `Check-in gap is now ${m} min.`);
+    return m;
+  }
+
   // ---------- setup ----------
   addTeam({ name, telegram = null, discord = null }) {
     const id = newId('team');
@@ -78,7 +89,7 @@ export class Engine {
     const token = randomBytes(24).toString('hex');
     this.tokens[token] = { runId: run.id, volunteerId: v.id };
     this._emit(run, 'team', 'joined', `${v.name} joined (${v.area}).`);
-    return { token, runId: run.id, name: v.name, area: v.area, nextDueAt: now + this.cfg.checkinMs };
+    return { token, runId: run.id, name: v.name, area: v.area, nextDueAt: now + this.gap(run) };
   }
 
   // ---------- events from the glasses app ----------
@@ -90,9 +101,10 @@ export class Engine {
     v.step = 0;
     v.nudge = 0;
     v.checkins += 1;
+    v.firstAt ||= v.lastCheckin; v.lastAt = v.lastCheckin;
     if (prevStep === 1) this._emit(run, 'coordinator', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
     if (prevStep === 2) this._emit(run, 'team', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
-    return { nextDueAt: v.lastCheckin + this.cfg.checkinMs };
+    return { nextDueAt: v.lastCheckin + this.gap(run) };
   }
 
   heartbeat(token, { battery, charging, inCase, worn, still, pos } = {}) {
@@ -154,7 +166,7 @@ export class Engine {
     const replies = run.replies.filter((r) => r.volunteerId === v.id && !r.delivered);
     replies.forEach((r) => { r.delivered = true; });
     return {
-      runName: run.name, area: v.area, dueInMs: v.lastCheckin + this.cfg.checkinMs - now,
+      runName: run.name, area: v.area, dueInMs: v.lastCheckin + this.gap(run) - now,
       step: v.step, replies: replies.map((r) => ({ id: r.id, text: r.short || r.text, full: r.text, by: r.by })),
       team: this.teamStatus(run.id),
     };
@@ -205,6 +217,7 @@ export class Engine {
     const prev = v.step;
     v.lastCheckin = this.clock.now(); v.lastSeen = v.lastCheckin;
     v.step = 0; v.nudge = 0; v.checkins += 1; v.flags.silent = false;
+    v.firstAt ||= v.lastCheckin; v.lastAt = v.lastCheckin;
     if (prev === 1) this._emit(run, 'coordinator', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
     if (prev === 2) this._emit(run, 'team', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
   }
@@ -227,10 +240,10 @@ export class Engine {
       if (run.status !== 'active') continue;
       for (const v of Object.values(run.volunteers)) {
         if (v.status !== 'active') continue;
-        const overdue = now - (v.lastCheckin + this.cfg.checkinMs);
+        const overdue = now - (v.lastCheckin + this.gap(run));
         // Private phone nudges for the volunteer, only if they linked their chat. Never include a position.
         if (v.tgChatId) {
-          const soon = Math.min(2 * 60_000, Math.floor(this.cfg.checkinMs / 3));
+          const soon = Math.min(2 * 60_000, Math.floor(this.gap(run) / 3));
           if (overdue >= 0 && (v.nudge || 0) < 2) {
             v.nudge = 2;
             this._emit(run, 'volunteer', 'nudge_overdue', `Check-in time, ${v.name}. Press the button or check in on your glasses. If there is none, your coordinator is told in ${Math.max(1, Math.round(this.cfg.coordinatorGraceMs / 60_000))} min.`, { volunteerId: v.id });
@@ -265,7 +278,7 @@ export class Engine {
       let state = 'waiting';
       if (v.status === 'signed_out') state = 'out';
       if (v.status === 'active') {
-        const left = v.lastCheckin + this.cfg.checkinMs - now;
+        const left = v.lastCheckin + this.gap(run) - now;
         state = v.flags.silent ? 'silent' : v.step > 0 ? 'overdue' : left <= 0 ? 'due' : 'ok';
       }
       return { id: v.id, name: v.name, area: v.area, state, battery: v.battery };
@@ -279,7 +292,7 @@ export class Engine {
     const debrief = {
       run: run.name, startedAt: run.startedAt, endedAt: this.clock.now(),
       volunteers: Object.values(run.volunteers).map((v) => ({
-        name: v.name, area: v.area, checkins: v.checkins, missedNotices: v.missed, trail: v.trail.slice(),
+        name: v.name, area: v.area, checkins: v.checkins, missedNotices: v.missed, firstAt: v.firstAt || null, lastAt: v.lastAt || null, markedOk: v.marked || 0, signedOut: v.status === 'signed_out', trail: v.trail.slice(),
       })),
       clues: run.clues.map((c) => ({ by: run.volunteers[c.volunteerId].name, text: c.text, pos: c.pos, at: c.at })),
     };
@@ -293,7 +306,7 @@ export class Engine {
 
   debriefText(d) {
     const lines = [`Run "${d.run}" finished after ${mins(d.endedAt - d.startedAt)} min.`];
-    for (const v of d.volunteers) lines.push(`${v.name} (${v.area}): ${v.checkins} check-ins, ${v.missedNotices} missed notices.`);
+    for (const v of d.volunteers) lines.push(`${v.name} (${v.area}): ${v.checkins} check-ins, ${v.missedNotices} missed notices${v.markedOk ? `, marked OK ${v.markedOk}x` : ''}${v.signedOut ? ', signed out' : ''}.`);
     lines.push(`${d.clues.length} clue(s) reported.`);
     return lines.join('\n');
   }

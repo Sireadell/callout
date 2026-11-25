@@ -59,9 +59,10 @@ export function makeSheet({ serviceAccount, fetchImpl = fetch, now = () => Date.
     async writeDebrief(id, d, summary = '') {
       await ensureTab(id, 'Debrief'); await ensureTab(id, 'Clues');
       const iso = (t) => new Date(t).toISOString();
-      const people = d.volunteers.map((v) => [d.run, iso(d.startedAt), iso(d.endedAt), v.name, v.area, v.checkins, v.missedNotices, summary]);
+      const hm = (t) => (t ? iso(t) : '');
+      const people = d.volunteers.map((v) => [d.run, iso(d.startedAt), iso(d.endedAt), v.name, v.area, v.checkins, v.missedNotices, summary, hm(v.firstAt), hm(v.lastAt), v.markedOk || 0, v.signedOut ? 'yes' : 'no']);
       const clues = d.clues.map((c) => [d.run, c.by, c.text, iso(c.at)]);
-      const put = (tab, rows) => rows.length && api(`${id}/values/${encodeURIComponent(`${tab}!A:H`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { method: 'POST', body: JSON.stringify({ values: rows }) });
+      const put = (tab, rows) => rows.length && api(`${id}/values/${encodeURIComponent(`${tab}!A:L`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { method: 'POST', body: JSON.stringify({ values: rows }) });
       await put('Debrief', people); await put('Clues', clues);
       return { people: people.length, clues: clues.length };
     },

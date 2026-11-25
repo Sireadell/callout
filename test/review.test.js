@@ -169,3 +169,32 @@ test('with no AI key a long coordinator line is cut to one short line, full text
   assert.ok(r.text.length <= 60, `lens text ${r.text.length}`);
   assert.equal(r.full, long);
 });
+
+test('/interval changes the gap for this run only, and refuses silly values', async () => {
+  const { bot, tg, engine, clock, run, token } = await started();
+  await bot.handle(g('/interval 30'));
+  assert.equal(engine.gap(run), 30 * 60_000);
+  assert.ok(engine.sync(token).dueInMs > 14 * 60_000 + 59_000 && engine.sync(token).dueInMs <= 30 * 60_000);
+  await bot.handle(g('/interval 2'));
+  assert.match(tg.out.at(-1).text, /between 5 and 60/);
+  assert.equal(engine.gap(run), 30 * 60_000);
+  await bot.handle(g('/interval 10', from(99, 'Pat')));
+  assert.equal(engine.gap(run), 30 * 60_000, 'a plain member cannot');
+  clock.advance(20 * 60_000); engine.tick(); await settle();
+  assert.ok(!tg.out.some((m) => /Missed check-in/.test(m.text || '')), '20 min is fine on a 30 min gap');
+});
+
+test('the debrief carries first and last check-in, Mark OK and sign-out, and no positions', async () => {
+  const { engine, clock, token, run, vol } = await started();
+  clock.advance(60_000); engine.checkIn(token, { pos: { lat: 51.5, lng: -0.1 } });
+  clock.advance(60_000); engine.checkIn(token, {});
+  engine.markOk(run.id, vol.id, 'Sam');
+  engine.signOut(token);
+  const d = engine.endRun(run.id);
+  const v = d.volunteers[0];
+  assert.equal(v.checkins, 2);
+  assert.ok(v.firstAt && v.lastAt && v.lastAt > v.firstAt);
+  assert.equal(v.markedOk, 1);
+  assert.equal(v.signedOut, true);
+  assert.match(engine.debriefText(d), /marked OK 1x, signed out/);
+});
