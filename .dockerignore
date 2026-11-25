@@ -1,0 +1,7 @@
+node_modules
+glasses
+test
+data
+.env
+*.log
+.git
