@@ -148,7 +148,7 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 
 | Part | Where it stands |
 |---|---|
-| Voice clue and spoken OK | Built. Speech to text worked on one real recorded clip. Not tried with real glasses audio, since the simulator mic gives almost nothing |
+| Voice clue and spoken OK | Built. The speech to text step has run on real audio twice (a recorded clip, then a computer-spoken 4.8 second clip that came back word for word in 5.9 seconds, with the transcript deleted afterwards). Not tried with real glasses audio, since the simulator mic gives almost nothing |
 | Google Sheet | Built and tested with fakes. Needs a Google service account to run for real |
 | Discord | The webhook notice reached a real Discord channel (1 second, one test message). Reply buttons need a Discord bot and are tested with fakes only |
 | AI reply and summary | Built and tested with fakes. Needs a Claude or OpenRouter key |
