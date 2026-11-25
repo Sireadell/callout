@@ -8,6 +8,7 @@ export function fmtClock(ms) {
 }
 
 export function glanceText(state, now = Date.now()) {
+  if (!state.token && state.ended) return ['CALLOUT', '', 'Run finished.', 'Thank you.'].join('\n');
   if (!state.token) {
     return ['CALLOUT', '', 'Not paired yet.', 'Open the Callout page on your', 'phone and enter your code.'].join('\n');
   }
@@ -40,10 +41,11 @@ export const MENU = [
   { itemID: 1, itemName: 'Check in' },
   { itemID: 2, itemName: 'Clue by voice' },
   { itemID: 3, itemName: 'Quick clue' },
+  { itemID: 8, itemName: 'Ask team for backup' },
   { itemID: 4, itemName: 'Repeat reply' },
-  { itemID: 5, itemName: 'End run' },
   { itemID: 6, itemName: 'Photo: camera' },
   { itemID: 7, itemName: 'Photo: album' },
+  { itemID: 5, itemName: 'Sign out' },
 ];
 
 // One tap each, no typing. Short so they fit on the lens.
@@ -62,3 +64,6 @@ export function isOk(text) {
 }
 export const okText = (round) => ['▲ Check-in due', '', 'Say "OK" or tap.', `Listening ${round} of 3. Swipe to skip.`].join('\n');
 export const stillText = (round) => ['Still there?', '', 'Say "OK" or tap.', `Listening ${round} of 3. Swipe to skip.`].join('\n');
+
+export const backupText = () => ['Ask the team for backup?', '', 'Your coordinator and team', 'get your last position.', '', 'Tap = send. Swipe = cancel.'].join('\n');
+export const replyText = (r) => `${r.by || 'Coordinator'}: ${r.text}\nTap = got it`;

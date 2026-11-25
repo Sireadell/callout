@@ -1,5 +1,5 @@
 import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
-import { glanceText, MENU, PRESET_CLUES, listenText, thinkText, confirmText, isOk, okText, stillText } from './view.js';
+import { glanceText, MENU, PRESET_CLUES, listenText, thinkText, confirmText, isOk, okText, stillText, backupText, replyText } from './view.js';
 import { makeStillness } from './motion.js';
 
 const SERVER = import.meta.env?.VITE_SERVER_URL || localStorage.getItem('callout.server') || 'http://localhost:8787';
@@ -13,8 +13,20 @@ async function api(path, body) {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ token: state.token, ...body }),
   });
-  if (!r.ok) throw new Error(`${path} ${r.status}`);
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    if (/unknown token|run ended/.test(j.error || '')) endedByServer();
+    throw new Error(`${path} ${r.status}`);
+  }
   return r.json();
+}
+
+// The server says the run is over: show it once, forget the token, go back to the pairing screen.
+function endedByServer() {
+  if (!state.token) return;
+  state.token = null; state.sync = null; state.ended = true; state.mode = 'glance'; state.pendingReply = null;
+  bridge?.setLocalStorage('callout.token', '').catch(() => {});
+  paint();
 }
 
 async function paint() {
@@ -191,8 +203,11 @@ async function sync() {
     state.sync = await api('/api/sync', { pos: await pos() });
     state.syncedAt = Date.now();
     if (state.sync.replies?.length) {
-      state.lastReply = state.sync.replies.at(-1).full || state.sync.replies.at(-1).text;
-      flash(`Reply: ${state.sync.replies.at(-1).text}`, 8000);
+      const last = state.sync.replies.at(-1);
+      state.lastReply = last.full || last.text;
+      state.pendingReply = last; // a tap in the next 10 seconds says "got it"
+      clearTimeout(state.replyTimer); state.replyTimer = setTimeout(() => { state.pendingReply = null; }, 10000);
+      flash(replyText(last), 10000);
     }
     paint();
   } catch { /* offline: keep the last screen. The server notices if we stay silent. */ }
@@ -218,9 +233,33 @@ async function pair(code) {
   });
   if (!r.ok) throw new Error('bad code');
   const j = await r.json();
-  state.token = j.token;
+  state.token = j.token; state.ended = false;
   await bridge.setLocalStorage('callout.token', j.token);
   await sync(); await heartbeat();
+}
+
+// Sign out: stops this person's check-in notices, then the system exit dialog.
+async function signOut() {
+  try { await api('/api/signout', {}); } catch { return flash('▲ Not signed out. Try again'); }
+  bridge.shutDownPageContainer(1);
+}
+
+// Backup request: asks first, never sends by one stray tap, and times out without sending.
+function askBackup() {
+  if (!state.token) return flash('Pair first');
+  state.mode = 'backup'; setScreen(backupText());
+  clearTimeout(state.backupTimer); state.backupTimer = setTimeout(() => { if (state.mode === 'backup') cancelClue('Not sent'); }, 8000);
+}
+async function sendBackup() {
+  clearTimeout(state.backupTimer); state.mode = 'glance';
+  try { await api('/api/backup', { pos: await pos() }); flash('● Team asked for backup', 6000); } catch { flash('▲ Not sent. Try again'); }
+}
+
+async function confirmReplyNow() {
+  const r = state.pendingReply; state.pendingReply = null;
+  if (!r?.id) return;
+  state.flash = ''; flash('● Got it', 2000);
+  try { await api('/api/confirm', { replyId: r.id }); } catch { /* the coordinator just does not see the reaction */ }
 }
 
 async function onMenu(id) {
@@ -230,7 +269,8 @@ async function onMenu(id) {
   else if (id === 2) startTalk();
   else if (id === 3) openPresets();
   else if (id === 4) flash(state.lastReply ? `Reply: ${state.lastReply}` : 'No reply yet', 6000);
-  else if (id === 5) bridge.shutDownPageContainer(1);
+  else if (id === 5) signOut();
+  else if (id === 8) askBackup();
   else if (id === 6) addPhoto(true);
   else if (id === 7) addPhoto(false);
 }
@@ -256,6 +296,7 @@ function onEvent(e) {
   if (state.mode === 'ok') { if (click) { const still = ok.kind === 'still'; cancelClue(''); if (still) { motion.reset(); state.stillUnanswered = false; flash('● Thanks'); } else checkIn(); } else if (swipe || dbl) cancelClue('Skipped'); return; }
   if (state.mode === 'confirm') { if (click) sendPending(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
   if (state.mode === 'think') return;
+  if (state.mode === 'backup') { if (click) sendBackup(); else if (swipe || dbl) { clearTimeout(state.backupTimer); cancelClue('Cancelled'); } return; }
   if (state.mode === 'presets') {
     if (dbl) return closePresets();
     if (click && e.listEvent) {
@@ -264,7 +305,8 @@ function onEvent(e) {
     }
     return;
   }
-  if (click) checkIn();                                   // ring or temple tap
+  if (click && state.pendingReply) confirmReplyNow();      // a tap while a reply shows means got it
+  else if (click) checkIn();                              // ring or temple tap
   else if (dbl) bridge.shutDownPageContainer(1);          // store rule: system exit dialog
 }
 

@@ -46,3 +46,20 @@ test('spoken OK accepts short answers only', () => {
   ['', 'Person inside', 'I think we should go back to the road and check it is okay for everyone'].forEach((t) => assert.ok(!isOk(t), t));
   assert.doesNotMatch(okText(1), /SOS|emergency|\p{Extended_Pictographic}/u);
 });
+
+test('menu offers backup and sign out, and no longer says End run', async () => {
+  const names = MENU.map((m) => m.itemName);
+  assert.ok(names.includes('Ask team for backup') && names.includes('Sign out'));
+  assert.ok(!names.includes('End run'));
+  assert.equal(new Set(MENU.map((m) => m.itemID)).size, MENU.length);
+});
+test('after the run ends the lens says so instead of "No signal"', async () => {
+  assert.match(glanceText({ ended: true }), /Run finished/);
+  assert.doesNotMatch(glanceText({ ended: true }), /No signal/);
+});
+test('backup and reply screens use team words, no alarm words', async () => {
+  const { backupText, replyText } = await import('../src/view.js');
+  const all = [backupText(), replyText({ by: 'Sam', text: 'Return to base' })].join(' ');
+  assert.match(all, /Sam: Return to base/);
+  assert.doesNotMatch(all, /SOS|emergency|urgent|help is coming|\p{Extended_Pictographic}/u);
+});
