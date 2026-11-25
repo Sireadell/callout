@@ -1,6 +1,6 @@
 # Callout: team check-in on Even G2 glasses, run from Telegram
 
-Callout is a check-in tool for field teams like flood wardens, volunteer search teams and aid drivers. The G2 lens shows when your next check-in is due and how many of your team have checked in. The coordinator runs everything from the team's Telegram group.
+Callout is a check-in tool for field teams like flood wardens, door-knock and welfare-check teams and aid drivers. The G2 lens shows when your next check-in is due and how many of your team have checked in. The coordinator runs everything from the team's Telegram group.
 
 I built it because people doing this work have their hands full. Phones stay in pockets, radios get missed, and a coordinator has no quick way to see who has gone quiet.
 
@@ -37,9 +37,9 @@ npm test
 
 | Command | What it shows | Result today |
 |---|---|---|
-| `npm run proof` | A full run against a fake Telegram chat: pairing, clue pin, reply to the lens, missed check-in notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, and that no positions are kept afterwards | 17 of 17 checks pass, 23 messages sent |
-| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 61 of 61 pass |
-| `cd glasses; npm install; npm test` | Lens text and head-motion tests | 12 of 12 pass |
+| `npm run proof` | A full run against a fake Telegram chat: pairing, clue pin, reply to the lens, missed check-in notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, and that no positions are kept afterwards | 22 of 22 checks pass, 31 messages sent |
+| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 71 of 71 pass |
+| `cd glasses; npm install; npm test` | Lens text and head-motion tests | 15 of 15 pass |
 
 ## Track 1, Messaging and News: Telegram is the core
 
@@ -63,6 +63,12 @@ Telegram is where the team lives. The bot sets up the group, hands out pairing c
 | Coordinator reacts: thumbs up shows "Seen" on the lens, OK hand "OK", heart "Thanks" | `message_reaction` update |
 | Bot reacts OK hand to confirm a reply reached the lens | `setMessageReaction` |
 | Coordinator dashboard inside Telegram | Mini App (`web_app` button, sign-in data checked on the server) |
+| Only the person who set up the team, or a group admin, can run, end or reply. Everyone else can read the board | `getChatMember`, checked on every command and button |
+| "Reached them, mark OK" button on missed check-in notices, so a solved problem stops alarming | Inline button, notice edited for the team |
+| Volunteer gets a quiet "due soon" message and a loud "check-in time" message in their own private chat, with a Check in button that works even when the phone has paused the glasses app | Private chat, inline button, only that person's chat can press it |
+| If the coordinator never pressed Start, notices come back to the group instead of being lost | Send fails, falls back to the group and says so |
+| Reply seen on the lens puts an eyes reaction on the coordinator's own message | `setMessageReaction` |
+| Ask team for backup from the lens menu: a loud team notice with a map pin, worded as a request | `sendVenue`, loud notification |
 | Stays under Telegram's limits | 3.1 seconds between group sends, waits and retries on 429 |
 | Webhook or polling | `setWebhook` with a secret header, or `getUpdates` |
 
@@ -109,6 +115,7 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 | AI reply and summary | Built and tested with fakes. Needs a Claude or OpenRouter key |
 | Mini App dashboard | Built. Needs a public https address before Telegram will open it |
 | Real G2 glasses | Everything above ran in the simulator only. Camera, album and the "Still there?" prompt from head motion are untested, since the simulator sends no photos or motion |
+| Newest Telegram parts | The coordinator-only check, Mark OK button, private check-in nudges, backup request and eyes reaction are tested with a fake Telegram. I have not yet seen them on the real app |
 | Not built | A voice note copy of each spoken clue, and Telegram's new ephemeral messages |
 
 ## What this is not
@@ -116,7 +123,8 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 - Not a life-saving tool, not an emergency service, and no replacement for radios or calling 999 or 911.
 - No route finding and no medical anything. A "Still there?" prompt asks a question. It never says anything about someone's health.
 - Positions only go to your own team's group, and never to the AI.
-- Nothing listens in the background. The mic opens on a tap, or for three short rounds when a check-in is overdue.
+- "Ask team for backup" is a message to your own team. It does not call anyone and it does not promise that help is coming.
+- Nothing listens in the background. The mic opens on a tap, or for three short rounds when a check-in is overdue or the app asks "Still there?".
 - No camera on the glasses. Photos come from the phone.
 
 ## Privacy and consent
@@ -154,7 +162,7 @@ Every other key in `.env` is optional. Each one switches on one part (voice, She
 
 ## What existed before
 
-Everything in this repo was written for this hackathon, from November 23. I'd built a Telegram bot, a token tracker and a voice record book that used AssemblyAI before, and I reused ideas from them. No code was copied in.
+This repo was started on November 24 for this hackathon. The approach to Telegram alerts and to server-side speech to text comes from two earlier projects of mine (a token tracker's Telegram alerts and a voice record book that used AssemblyAI).
 
 ---
 
