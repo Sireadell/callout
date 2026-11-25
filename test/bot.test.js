@@ -305,6 +305,19 @@ test('/sheet then /import adds everyone from the sheet with codes', async () => 
   assert.equal(Object.keys(run.volunteers).length, 2);
 });
 
+test('/import twice does not list the same people twice', async () => {
+  const { bot, tg, engine } = setupExtra();
+  await bot.handle(msg('/team Wardens')); await bot.handle(msg('/run Elm Street'));
+  await bot.handle(msg('/add Ana | A1'));
+  await bot.handle(msg(`/sheet https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`));
+  await bot.handle(msg('/import'));
+  assert.match(tg.out.at(-1).text, /Added 1, 1 already in the run/);
+  await bot.handle(msg('/import'));
+  assert.match(tg.out.at(-1).text, /already in this run/);
+  const run = engine.activeRun(Object.keys(engine.teams)[0]);
+  assert.equal(Object.keys(run.volunteers).length, 2);
+});
+
 test('/end posts the summary, writes the sheet and closes the topic last', async () => {
   const { bot, tg, engine, sheetCalls } = setupExtra();
   fakeForum.on = true; fakeForum.closed.length = 0;

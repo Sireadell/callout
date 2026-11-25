@@ -134,8 +134,13 @@ Everyone who joins agrees to share their position with this group while the run 
       let list;
       try { list = await sheet.readVolunteers(team.sheetId); } catch (e) { return say(chatId, `Could not read the sheet: ${e.message}`); }
       if (!list.length) return say(chatId, 'No volunteers found. Use tab Volunteers, name in column A, area in column B.');
-      const lines = list.map(({ name: n, area }) => `${n} (${area}): ${engine.addVolunteer(run.id, { name: n, area }).code}`);
-      return say(chatId, `Added ${list.length}. Each person enters their code in the glasses app within 15 minutes, once only:\n${lines.join('\n')}`);
+      // Someone already in this run is skipped, so sending /import twice does not list them twice.
+      const have = new Set(Object.values(run.volunteers).map((x) => x.name.toLowerCase()));
+      const fresh = list.filter(({ name: n }) => !have.has(n.toLowerCase()));
+      const skipped = list.length - fresh.length;
+      if (!fresh.length) return say(chatId, 'Everyone in the sheet is already in this run.');
+      const lines = fresh.map(({ name: n, area }) => `${n} (${area}): ${engine.addVolunteer(run.id, { name: n, area }).code}`);
+      return say(chatId, `Added ${fresh.length}${skipped ? `, ${skipped} already in the run` : ''}. Each person enters their code in the glasses app within 15 minutes, once only:\n${lines.join('\n')}`);
     }
     if (name === 'end') {
       const debrief = engine.endRun(run.id);
