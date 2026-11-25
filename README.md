@@ -38,8 +38,8 @@ npm test
 | Command | What it shows | Result today |
 |---|---|---|
 | `npm run proof` | A full run against a fake Telegram chat: pairing, clue pin, reply to the lens, missed check-in notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, and that no positions are kept afterwards | 20 of 20 checks pass, 31 messages sent |
-| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 71 of 71 pass |
-| `cd glasses; npm install; npm test` | Lens text and head-motion tests | 15 of 15 pass |
+| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 75 of 75 pass |
+| `cd glasses; npm install; npm test` | Lens text and head-motion tests | 16 of 16 pass |
 
 ## Track 1, Messaging and News: Telegram is the core
 
