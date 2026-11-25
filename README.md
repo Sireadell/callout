@@ -6,7 +6,12 @@ I built it because people doing this work have their hands full. Phones stay in 
 
 > Has everyone on my team checked in, and if not, who and where were they last?
 
-**Measured on real Telegram: a clue sent from the server shows up as a map pin in the team group in about 0.65 seconds** (626, 633, 662 and 687 ms on four clues). That times the server to Telegram leg only, not the glasses to phone leg.
+**Measured on real Telegram: once a clue reaches the server, Telegram accepts it as a map pin in the team group in about 0.65 seconds** (626, 633, 662 and 687 ms on four clues). That's the server to Telegram leg only. The trip from glasses to phone to server comes before it and isn't in that number.
+
+| | |
+|---|---|
+| Live server | https://callout-dih6.onrender.com (`/healthz` answers `{"ok":true}`, and the Telegram bot gets its messages there) |
+| Code | https://github.com/Sireadell/callout |
 
 ## A flood night with Callout
 
@@ -32,16 +37,21 @@ At `/end`, the debrief goes to Telegram (and Discord and a Google Sheet if set u
 No keys, no account, no network. You need Node 22 or newer.
 
 ```powershell
+git clone https://github.com/Sireadell/callout
 cd callout
 npm run proof
 npm test
 ```
+
+To see the hosted server is up, open https://callout-dih6.onrender.com/healthz. It should answer `{"ok":true}`.
 
 | Command | What it shows | Result today |
 |---|---|---|
 | `npm run proof` | A full run against a fake Telegram chat: pairing, clue pin, reply to the lens, missed check-in notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, and that no positions are kept afterwards | 20 of 20 checks pass, 31 messages sent |
 | `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 85 of 85 pass |
 | `cd glasses; npm install; npm test` | Lens text and head-motion tests | 16 of 16 pass |
+
+The glasses app is also packed as `callout.ehpk`, built to talk to the live server, which is on its allowed network list in `glasses/app.json`. I haven't uploaded it to Even Hub yet, because I'm still waiting on an Even account, and it hasn't run on real glasses.
 
 ## What it uses from the Even Hub SDK
 
@@ -60,11 +70,13 @@ npm test
 | Local storage | The pairing token and the queue of items waiting for signal |
 | Exit dialog | Double tap and Sign out both end with the system exit dialog |
 
-## Track 1, Messaging and News: Telegram is the core
+## Track 1, Messaging and News: Telegram is the core integration
 
-Telegram is where the team lives. The bot sets up the group, hands out pairing codes, posts every clue and notice, and carries the coordinator's replies back to the lens.
+Telegram is where the team lives, so that's where I built the core integration. The bot sets up the group, hands out pairing codes, posts every clue and notice, and carries the coordinator's replies back to the lens.
 
-### Best Telegram integration: what the bot uses
+### Best Telegram integration: the best use of Telegram on G2 I could make
+
+Of the four kinds Telegram offers (accounts, bots, channels or Mini Apps), Callout uses a bot and a Mini App. I left out user accounts on purpose. Acting as someone's own account would mean reading their private chats, and that doesn't fit a tool that promises to forget positions.
 
 | What it does | Telegram feature |
 |---|---|
@@ -97,6 +109,8 @@ Discord works as a second channel: notices through a webhook, and reply buttons 
 
 ## Track 4: the Sheet and AI
 
+This is my second track, and it's tied into the same run as the Telegram side. The Sheet fills the team at the start and keeps the record at the end. The AI keeps the lens to one readable line.
+
 | Part | What it does |
 |---|---|
 | Google Sheet in | Coordinator lists names and areas in a Volunteers tab, then `/import` gives everyone a pairing code |
@@ -120,17 +134,19 @@ The AI only sees counts and clue words. No names, no positions. It runs on the s
 
 | Claim | How it is shown | Status |
 |---|---|---|
-| Clue becomes a map pin with four buttons, protected from forwarding | `npm run proof`, `test/bot.test.js` | Tested, seen on real Telegram |
-| Missed check-in: coordinator at 17 minutes, whole team at 22 | `npm run proof`, `test/engine.test.js` | Tested, seen on real Telegram with short timers |
-| Only the setup person or a group admin can run, end or reply | `test/review.test.js`, `npm run proof` | Tested with a fake Telegram. A plain-member refusal needs a second account |
-| Mark OK, private check-in nudges, backup request, eyes reaction | `test/review.test.js`, `npm run proof` | Tested, seen on real Telegram |
-| Offline queue keeps its own time (30 minute cap, never the future) | `test/review.test.js`, `glasses/test/view.test.js` | Tested. Not tried on real glasses |
-| `/interval`, fuller debrief, `/end clear` | `test/review.test.js` | Tested with a fake Telegram only |
-| Positions deleted at the end, none kept | `npm run proof`, `test/engine.test.js` | Tested |
-| No emergency, life-saving or health wording anywhere | `npm run proof`, `test/engine.test.js`, `glasses/test/view.test.js` | Tested |
-| "Still there?" from head motion | `glasses/test/motion.test.js` | Tested. The simulator sends no motion, so not tried live |
-| Voice, Discord buttons, Mini App | `test/stt.test.js`, `test/discord.test.js`, `test/miniapp.test.js` | Tested with fakes only. See "Not yet checked live" |
-| Double tap exit, swipe cancel, voice timer, dropping other voices | `glasses/src/main.js` | Built, no automated test. Not tried on real glasses |
+| Clue becomes a map pin with four buttons, protected from forwarding | `npm run proof` ([proof.js](https://github.com/Sireadell/callout/blob/main/server/proof.js)), [bot.test.js](https://github.com/Sireadell/callout/blob/main/test/bot.test.js) | Tested, seen on real Telegram |
+| Missed check-in: coordinator at 17 minutes, whole team at 22 | `npm run proof`, [engine.test.js](https://github.com/Sireadell/callout/blob/main/test/engine.test.js) | Tested, seen on real Telegram with short timers |
+| Only the setup person or a group admin can run, end or reply | [review.test.js](https://github.com/Sireadell/callout/blob/main/test/review.test.js), `npm run proof` | Tested with a fake Telegram. A plain-member refusal needs a second account |
+| Mark OK, private check-in nudges, backup request, eyes reaction | [review.test.js](https://github.com/Sireadell/callout/blob/main/test/review.test.js), `npm run proof` | Tested, seen on real Telegram |
+| Offline queue keeps its own time (30 minute cap, never the future) | [review.test.js](https://github.com/Sireadell/callout/blob/main/test/review.test.js), [glasses view.test.js](https://github.com/Sireadell/callout/blob/main/glasses/test/view.test.js) | Tested. Not tried on real glasses |
+| `/interval`, fuller debrief, `/end clear` | [review.test.js](https://github.com/Sireadell/callout/blob/main/test/review.test.js) | Tested with a fake Telegram only |
+| Photo send leaves out empty fields (the "undefined" bug) | [telegram.test.js](https://github.com/Sireadell/callout/blob/main/test/telegram.test.js) | Tested, seen on real Telegram |
+| Positions deleted at the end, none kept | `npm run proof`, [engine.test.js](https://github.com/Sireadell/callout/blob/main/test/engine.test.js) | Tested |
+| No emergency, life-saving or health wording anywhere | `npm run proof`, [engine.test.js](https://github.com/Sireadell/callout/blob/main/test/engine.test.js), [glasses view.test.js](https://github.com/Sireadell/callout/blob/main/glasses/test/view.test.js) | Tested |
+| Sheet in and out, AI line and summary | [ai.test.js](https://github.com/Sireadell/callout/blob/main/test/ai.test.js), [bot.test.js](https://github.com/Sireadell/callout/blob/main/test/bot.test.js) | Tested with fakes. Sheet and AI each ran for real outside Telegram |
+| "Still there?" from head motion | [motion.test.js](https://github.com/Sireadell/callout/blob/main/glasses/test/motion.test.js) | Tested. The simulator sends no motion, so not tried live |
+| Voice, Discord buttons, Mini App | [stt.test.js](https://github.com/Sireadell/callout/blob/main/test/stt.test.js), [discord.test.js](https://github.com/Sireadell/callout/blob/main/test/discord.test.js), [miniapp.test.js](https://github.com/Sireadell/callout/blob/main/test/miniapp.test.js) | Tested with fakes only. See "Not yet checked live" |
+| Double tap exit, swipe cancel, voice timer, dropping other voices | [glasses main.js](https://github.com/Sireadell/callout/blob/main/glasses/src/main.js) | Built, no automated test. Not tried on real glasses |
 
 ## Bugs the live test found
 
@@ -151,10 +167,12 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 | Voice clue and spoken OK | Built. The speech to text step has run on real audio twice (a recorded clip, then a computer-spoken 4.8 second clip that came back word for word in 5.9 seconds, with the transcript deleted afterwards). Not tried with real glasses audio, since the simulator mic gives almost nothing |
 | Google Sheet | Ran for real with a service account: the Volunteers tab was read (3 names and areas) and a debrief row and a clue row were written, with no positions. Not yet run through the `/sheet`, `/import` and `/end` commands in Telegram |
 | Discord | The webhook notice reached a real Discord channel (1 second, one test message). Reply buttons need a Discord bot and are tested with fakes only |
-| AI reply and summary | Ran for real through OpenRouter (Claude Haiku): a long reply came back as "Go to main road, wait by red car. Boat team arrives in 10 min" in 2.1 seconds, and a run summary in 2.6 seconds. If the Anthropic key has no credit, the server falls back to OpenRouter. Not yet run through a real `/end` in Telegram |
-| Mini App dashboard | Built. Needs a public https address before Telegram will open it |
+| AI reply and summary | Ran for real through OpenRouter (Claude Haiku): a long reply came back as "Go to main road, wait by red car. Boat team arrives in 10 min" in 2.1 seconds, and a run summary in 2.6 seconds. If Claude turns a request down, the server falls back to OpenRouter. Not yet run through a real `/end` in Telegram |
+| Mini App dashboard | Built, and it now has a public https address on the live server. I haven't opened it inside Telegram yet |
 | Voice from someone else | Dropping frames the app marks as another speaker has not been tried with real audio |
 | `/end clear` | Tested with a fake Telegram only |
+| Offline queue | Tested in code only. Losing and getting back signal on real glasses hasn't happened yet |
+| Glasses package | `callout.ehpk` is built against the live server and the 16 glasses tests pass. Not uploaded to Even Hub yet, since I'm waiting on an Even account |
 | Real G2 glasses | Everything above ran in the simulator only. Camera, album and the "Still there?" prompt from head motion are untested, since the simulator sends no photos or motion |
 | Newest Telegram parts | The coordinator-only check, Mark OK button, private check-in nudges, backup request and eyes reaction are tested with a fake Telegram. The nudges, Mark OK, backup pin and reactions have now run on real Telegram. The plain-member refusal is covered by tests only (it needs a second account) |
 | Not built | A voice note copy of each spoken clue, and Telegram's new ephemeral messages |
@@ -173,6 +191,10 @@ For the notices I shortened the timers so I didn't have to wait 17 minutes.
 Everyone in a run's group agrees that their position is shared with the group while the run is active. Positions are deleted when the run ends.
 
 If you host Callout somewhere that wipes its disk on restart, set `STATE_SHEET_ID` and the server keeps a private copy of its teams, runs and pairing codes in your own Google Sheet (no positions, no trails). Without it, nothing leaves the server.
+
+## Where the live copy runs
+
+The live server is the same Docker image as this repo, on Render's free plan. That plan puts a server to sleep when nobody uses it, so a cron-job.org job opens `/healthz` every 5 minutes to keep it awake. The free plan can also wipe the disk on a restart, so the live server keeps its private Sheet copy turned on: teams, runs and pairings come back, positions were never in it. It's fine for a demo. A real team would want a paid plan or its own server.
 
 Voice is turned into text on the server, and the transcript is deleted at the speech provider as soon as the words come back. Photos are passed straight to the group. The server keeps neither. Pairing codes work once and expire after 15 minutes.
 
