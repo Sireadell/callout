@@ -14,6 +14,7 @@ import { makeSheet } from './sheet.js';
 import { makeRoutes, describeCaller } from './api.js';
 import { makeSaver } from './saver.js';
 import { makeJoins } from './join.js';
+import { makeStatus } from './status.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const PORT = Number(process.env.PORT || 8787);
@@ -66,7 +67,8 @@ const miniapp = process.env.TELEGRAM_BOT_TOKEN ? makeMiniApp({ engine, botToken:
 const stt = makeStt({ apiKey: process.env.ASSEMBLYAI_API_KEY });
 const joins = makeJoins({ engine });
 let botName = null;
-const routes = makeRoutes({ engine, stt, joins, botName: () => botName, miniapp });
+const status = makeStatus({ engine, parts: { telegram: () => Boolean(bot), ai: ai.enabled, sheet: Boolean(sheet) } });
+const routes = makeRoutes({ engine, stt, status, joins, botName: () => botName, miniapp });
 // Local testing only: makes a team, a run and one volunteer and returns the pairing code.
 if (process.env.CALLOUT_DEV === '1') {
   routes['POST /dev/seed'] = (b) => {

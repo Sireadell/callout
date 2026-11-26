@@ -16,7 +16,7 @@ export function describeCaller(req) {
 }
 
 // What the glasses app and the Mini App can ask the server. Kept apart from the web server so it can be tested.
-export function makeRoutes({ engine, stt, joins = null, botName = () => null, miniapp = null, env = process.env }) {
+export function makeRoutes({ engine, stt, status = null, joins = null, botName = () => null, miniapp = null, env = process.env }) {
   const sync = makeLongPoll({ engine });
   const newCodes = makeLimiter({ max: 20, windowMs: 10 * 60_000, now: () => engine.clock.now() });
   return {
@@ -51,5 +51,6 @@ export function makeRoutes({ engine, stt, joins = null, botName = () => null, mi
     'POST /app/api/state': (b) => { if (!miniapp) throw new Error('not set up'); return miniapp.state(b.initData); },
     'POST /app/api/reply': (b) => { if (!miniapp) throw new Error('not set up'); return miniapp.reply(b.initData, b); },
     'GET /healthz': () => ({ ok: true }),
+    'GET /status': () => (status ? status() : { ok: true }),
   };
 }

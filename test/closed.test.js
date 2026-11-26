@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setup, start, settle } from './helpers.js';
+import { makeStatus } from '../server/status.js';
 
 const said = (tg, re) => tg.out.filter((m) => re.test(m.text || ''));
 const MIN = 60_000;
@@ -40,3 +41,15 @@ test('after the app is gone and no closed message arrived, "gone quiet" still fi
   assert.equal(said(s.tg, /gone quiet/).length, 1);
 });
 
+
+test('the status page shows parts and counts, and no names, ids, keys or positions', async () => {
+  const s = setup();
+  const { token, run } = await start(s);
+  s.engine.clue(token, { text: 'Person inside', pos: { lat: 51.50123, lng: -0.12456 } }); await settle();
+  s.engine.endRun(run.id);
+  const env = { RENDER_GIT_COMMIT: 'abcdef1234567', ASSEMBLYAI_API_KEY: 'secret-key', CALLOUT_DEV: '1' };
+  const page = makeStatus({ engine: s.engine, env, parts: { telegram: () => true }, startedAt: 0, now: () => 9000 })();
+  assert.deepEqual([page.commit, page.uptimeSeconds, page.runsEnded, page.parts.speechToText, page.parts.ai, page.parts.testRoutes], ['abcdef1', 9, 1, 'on', 'off', 'on']);
+  assert.equal(page.timings.clueToChat.samples, 1);
+  assert.doesNotMatch(JSON.stringify(page), /Ana|Wardens|Person|secret-key|-500|51[.]5/);
+});
