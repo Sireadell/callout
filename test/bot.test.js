@@ -124,8 +124,7 @@ test('the private start link ties the volunteer to their chat, and the code stil
   await bot.handle(msg('/add Ana | Area A1'));
   const code = lastCode(tg);
   await bot.handle(priv(`/start ${code}`));
-  assert.match(tg.out.at(-1).text, /Linked: Ana/);
-  assert.equal(tg.out.at(-1).chat, 77);
+  assert.ok(tg.out.some((m) => m.chat === 77 && /Linked: Ana/.test(m.text || '')));
   assert.equal(engine.pair(code).name, 'Ana');
 });
 
@@ -393,4 +392,38 @@ test('a group turned into a supergroup keeps its team', async () => {
   await bot.handle({ message: { chat: { id: -500, type: 'group' }, migrate_to_chat_id: -1005, message_id: 2 } });
   assert.equal(engine.teamByChat(-1005)?.name, 'Wardens');
   assert.equal(engine.teamByChat(-500), undefined);
+});
+
+test('the first private chat keeps the link: a second person cannot take it over', async () => {
+  const { bot, tg, engine } = setup();
+  await bot.handle(msg('/team Wardens'));
+  await bot.handle(msg('/run Elm Street'));
+  await bot.handle(msg('/add Ana | Area A1'));
+  const code = lastCode(tg);
+  await bot.handle(priv(`/start ${code}`));
+  assert.ok(tg.out.some((m) => m.chat === -500 && /Ana's private chat is linked, opened by Ana/.test(m.text)));
+  await bot.handle(priv(`/start ${code}`, { chat: { id: 88, type: 'private' }, from: { id: 88, first_name: 'Pat' } }));
+  assert.match(tg.out.at(-1).text, /already has a private chat linked/);
+  const run = Object.values(engine.runs)[0];
+  assert.equal(Object.values(run.volunteers)[0].tgChatId, 77);
+});
+
+test('with a private coordinator chat, pairing codes never appear in the group', async () => {
+  const { bot, tg } = setup();
+  await bot.handle(msg('/team Wardens'));
+  await bot.handle(msg('/coordinator'));
+  await bot.handle(msg('/run Elm Street'));
+  await bot.handle(msg('/add Ana | Area A1'));
+  const withCode = tg.out.filter((m) => /\n[A-Z0-9]{10}\n/.test(m.text || ''));
+  assert.deepEqual(withCode.map((m) => m.chat), [7]);
+  assert.ok(tg.out.some((m) => m.chat === -500 && /Added Ana \(Area A1\)\. The code is private\./.test(m.text)));
+  assert.ok(!tg.out.some((m) => m.chat === -500 && /[?]start=[A-Z0-9]{10}/.test(m.text || '')));
+});
+
+test('without a private coordinator chat the code goes to the group with a warning', async () => {
+  const { bot, tg } = setup();
+  await bot.handle(msg('/team Wardens'));
+  await bot.handle(msg('/run Elm Street'));
+  await bot.handle(msg('/add Ana | Area A1'));
+  assert.ok(tg.out.some((m) => m.chat === -500 && /Anyone in this group can see this/.test(m.text || '')));
 });

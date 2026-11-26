@@ -78,6 +78,9 @@ export class Engine {
   // Codes and sign-in keys are only ever stored as hashes.
   findPairing(code) { return this.pairings[hashKey(String(code || '').toUpperCase())]; }
 
+  // Something worth saving at once happened. The server replaces this.
+  changed() {}
+
   // The glasses app trades a single-use code for a token.
   pair(code) {
     const p = this.findPairing(code);

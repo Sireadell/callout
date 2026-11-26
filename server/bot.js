@@ -50,6 +50,21 @@ export function makeBot({ engine, telegram, router, botUsername = 'callout_bot',
     try { const mem = await telegram.getChatMember?.(chatId, userId); return mem?.status === 'creator' || mem?.status === 'administrator'; } catch { return false; }
   }
 
+  // Pairing codes go to the coordinator's private chat. The group is only the fallback, and is told so.
+  async function sendCodes(team, chatId, text, short) {
+    const priv = team.telegram.coordinatorChatId;
+    if (priv != null && priv !== chatId) {
+      try {
+        await say(priv, text);
+        return say(chatId, `${short} Sent to the coordinator's private chat.`);
+      } catch { /* cannot reach them: fall back to this chat */ }
+    }
+    if (chatId === priv) return say(chatId, text);
+    return say(chatId, `${text}
+
+Anyone in this group can see this. To get codes privately, the person who set up the team presses Start in a private chat with me, then sends /coordinator here.`);
+  }
+
   async function onMessage(m) {
     // Turning on Topics changes a group into a supergroup with a new chat id. Follow it.
     if (m.migrate_to_chat_id) {
@@ -109,7 +124,7 @@ Everyone who joins agrees to share their position with this group while the run 
       const [vn, area] = arg.split('|').map((s) => s.trim());
       if (!vn || !area) return say(chatId, 'Use: /add <name> | <area>');
       const { code } = engine.addVolunteer(run.id, { name: vn, area });
-      return say(chatId, `${vn} (${area}): enter this code in the glasses app within 15 minutes, once only:\n${code}\n\nOptional: ${vn} can open https://t.me/${botUsername}?start=${code} to get private messages from me.`);
+      return sendCodes(team, chatId, `${vn} (${area}): enter this code in the glasses app within 15 minutes, once only:\n${code}\n\nOptional: ${vn} can open https://t.me/${botUsername}?start=${code} to get private messages from me. Give it to ${vn} only.`, `Added ${vn} (${area}). The code is private.`);
     }
     if (name === 'status') return say(chatId, boardText(engine, run.id));
     if (name === 'interval') {
@@ -140,7 +155,8 @@ Everyone who joins agrees to share their position with this group while the run 
       const skipped = list.length - fresh.length;
       if (!fresh.length) return say(chatId, 'Everyone in the sheet is already in this run.');
       const lines = fresh.map(({ name: n, area }) => `${n} (${area}): ${engine.addVolunteer(run.id, { name: n, area }).code}`);
-      return say(chatId, `Added ${fresh.length}${skipped ? `, ${skipped} already in the run` : ''}. Each person enters their code in the glasses app within 15 minutes, once only:\n${lines.join('\n')}`);
+      const added = `Added ${fresh.length}${skipped ? `, ${skipped} already in the run` : ''}.`;
+      return sendCodes(team, chatId, `${added} Each person enters their code in the glasses app within 15 minutes, once only:\n${lines.join('\n')}`, added);
     }
     if (name === 'end') {
       const debrief = engine.endRun(run.id);
@@ -169,9 +185,15 @@ Everyone who joins agrees to share their position with this group while the run 
   async function linkVolunteer(m, code) {
     const p = engine.findPairing(code);
     if (!p || p.used || engine.clock.now() > p.expiresAt) return say(m.chat.id, 'That link is not valid any more. Ask your coordinator for a new one.');
-    const { v } = engine.findVolunteer(p.volunteerId);
+    const { run, v } = engine.findVolunteer(p.volunteerId);
+    // The first private chat to use the link keeps it. Nobody else can take it over.
+    if (v.tgChatId && v.tgChatId !== m.chat.id) return say(m.chat.id, `${v.name} already has a private chat linked, so this link cannot be used. Ask your coordinator.`);
+    const first = !v.tgChatId;
     v.tgChatId = m.chat.id;
-    return say(m.chat.id, `Linked: ${v.name}, ${v.area}. I will only message you here about your own check-ins. Not an emergency service.`, { disable_notification: true });
+    engine.changed();
+    await say(m.chat.id, `Linked: ${v.name}, ${v.area}. I will only message you here about your own check-ins. Not an emergency service.`, { disable_notification: true });
+    const group = engine.teams[run.teamId]?.telegram?.chatId;
+    if (first && group != null) await say(group, `${v.name}'s private chat is linked, opened by ${m.from?.first_name || 'someone'}.`, { disable_notification: true });
   }
 
   // Runs when the bot is added to a group or its rights change.
