@@ -7,11 +7,11 @@ const state = { mode: 'glance', screen: null, reply: null, pending: null, token:
 let bridge;
 let flashTimer;
 
-async function api(path, body) {
+async function api(path, body, { signal } = {}) {
   if (window.__quiet) throw new Error('quiet');
   const r = await fetch(`${SERVER}${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ token: state.token, ...body }),
+    body: JSON.stringify({ token: state.token, ...body }), signal,
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
@@ -189,7 +189,7 @@ async function sendClue(text) {
 
 // ---- no signal: keep check-ins and clues, send them in order when the server answers again ----
 // Each keeps the time it was made. The server caps that time (never the future, at most 30 minutes old).
-const isNetwork = (e) => e instanceof TypeError || /quiet/.test(e?.message || '');
+const isNetwork = (e) => e instanceof TypeError || e?.name === 'AbortError' || /quiet/.test(e?.message || '');
 function saveQueue() { bridge?.setLocalStorage('callout.queue', JSON.stringify(state.queue)).catch(() => {}); }
 function hold(path, body, label) {
   (state.queue ||= []).push({ path, body, at: Date.now() });
@@ -327,7 +327,8 @@ function flash(msg, ms = 3000) {
 async function pos() {
   try {
     const l = await bridge.getAppLocation({ timeoutMs: 3000 });
-    return l ? { lat: l.latitude, lng: l.longitude } : undefined;
+    if (l) state.pos = { lat: l.latitude, lng: l.longitude }; // the long poll sends the last known one
+    return l ? state.pos : undefined;
   } catch { return undefined; }
 }
 
@@ -353,6 +354,29 @@ function applySync(reply) {
   } else askIfNew();
   paint();
 }
+
+// ---- long poll: one request the server holds until something changes, so replies arrive at once ----
+// The plain 5 second poll stays as the fallback. 15 seconds keeps the "No signal" line honest.
+const LONG_WAIT_S = 15;
+const long = { live: false, rev: -1, ctl: null };
+async function longPoll() {
+  for (;;) {
+    if (!state.token) { long.live = false; await sleep(1000); continue; }
+    const started = Date.now();
+    const ctl = new AbortController(); long.ctl = ctl;
+    const giveUp = setTimeout(() => ctl.abort(), (LONG_WAIT_S + 20) * 1000);
+    try {
+      const reply = await api('/api/sync', { pos: state.pos, wait: LONG_WAIT_S, rev: long.rev }, { signal: ctl.signal });
+      applySync(reply);
+      if (typeof reply.rev !== 'number') { long.live = false; await sleep(60000); continue; } // a server without long poll
+      long.rev = reply.rev; long.live = true;
+      if (Date.now() - started < 1000) await sleep(1000); // never a tight loop
+    } catch {
+      long.live = false; await sleep(5000);
+    } finally { clearTimeout(giveUp); }
+  }
+}
+const pollIfNeeded = () => { if (!long.live || Date.now() - state.syncedAt > 18000) sync(); };
 
 // A reply takes the main box for 10 seconds. While it shows, a tap says "got it".
 function showReply(r) {
@@ -390,7 +414,7 @@ async function pair(code) {
   });
   if (!r.ok) throw new Error('bad code');
   const j = await r.json();
-  state.token = j.token; state.ended = false;
+  state.token = j.token; state.ended = false; long.rev = -1;
   await bridge.setLocalStorage('callout.token', j.token); phoneStatus();
   await sync(); await heartbeat();
 }
@@ -511,8 +535,9 @@ async function start() {
   // Local testing: open the page with ?code=XXXX to pair without typing.
   const urlCode = new URLSearchParams(location.search).get('code');
   if (urlCode && !state.token) await pair(urlCode.toUpperCase()).catch(() => {});
-  setInterval(() => { paint(); askIfNew(); watchDue(); }, 1000); setInterval(sync, 5000); setInterval(heartbeat, 30000);
+  setInterval(() => { paint(); askIfNew(); watchDue(); }, 1000); setInterval(pollIfNeeded, 5000); setInterval(heartbeat, 30000);
   sync();
+  longPoll();
 }
 start();
 
@@ -545,7 +570,7 @@ if (new URLSearchParams(location.search).get('dev') === '1') {
   add('Glasses off', () => set({ isWearing: false, isCharging: false, isInCase: false }));
   add('Glasses back on', () => set({ isWearing: true }));
   add('Fake: no movement for 5 min', () => motion.forceStill());
-  add('Go quiet (stop talking to server)', () => { window.__quiet = true; });
+  add('Go quiet (stop talking to server)', () => { window.__quiet = true; long.ctl?.abort(); });
   add('Come back', () => { window.__quiet = false; sync(); heartbeat(); });
   document.body.append(box);
 }
