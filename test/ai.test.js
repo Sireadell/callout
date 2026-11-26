@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
-import { makeAi, trimLine, debriefFacts } from '../server/ai.js';
+import { makeAi, trimLine, debriefFacts, cleanLines } from '../server/ai.js';
 import { makeSheet, parseSheetId } from '../server/sheet.js';
 
 test('trimLine keeps a short first sentence and cuts a long one at a word', () => {
@@ -159,4 +159,9 @@ test('the outside copy of the state has no positions, and round trips through th
   assert.deepEqual(await sheet.readState('id'), big);
   assert.equal(await sheet.writeState('id', clean), 1);
   assert.deepEqual(await sheet.readState('id'), clean, 'a shorter copy leaves no old rows behind');
+});
+
+test('an AI suggestion never asks about people being trapped or hurt', () => {
+  const lines = ['Do you know if anyone is trapped there?', 'Is anyone hurt?', 'Any casualties?', 'Is the victim breathing?', 'Is the road still closed?'];
+  assert.deepEqual(cleanLines(lines.join('\n'), 80, 5), ['Is the road still closed?']);
 });

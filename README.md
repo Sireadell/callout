@@ -1,36 +1,42 @@
-# Callout: team check-in on Even G2 glasses, run from Telegram
+# Callout: team check-ins on Even G2 glasses, run from Telegram
 
-Callout is a check-in tool for field teams like flood wardens, door-knock and welfare-check teams and aid drivers. The G2 lens shows when your next check-in is due and how many of your team have checked in. The coordinator runs everything from the team's Telegram group.
+![CI](https://github.com/Sireadell/callout/actions/workflows/ci.yml/badge.svg)
 
-I built it because people doing this work have their hands full. Phones stay in pockets, radios get missed, and a coordinator has no quick way to see who has gone quiet.
+Callout is a check-in tool for small field teams on Even G2 glasses. The lens shows when your next check-in is due and how many of your team have checked in. The coordinator runs the shift from the team's Telegram group.
+
+I built it because people doing this work have their hands full. Phones stay in pockets, radios get missed, and a coordinator can't quickly see who has gone quiet.
 
 > Has everyone on my team checked in, and if not, who and where were they last?
 
-**Measured on real Telegram: once a clue reaches the server, Telegram accepts it as a map pin in the team group in about 0.65 seconds** (626, 633, 662 and 687 ms on four clues). That's the server to Telegram leg only. The trip from glasses to phone to server comes before it and isn't in that number.
+**Measured on real Telegram: once a clue reaches the server, Telegram accepts it as a map pin in the group in about 0.65 seconds** (626, 633, 662 and 687 ms on four clues). That's the server to Telegram leg only. Glasses to phone to server comes before it and isn't counted.
 
 | | |
 |---|---|
-| Live server | https://callout-dih6.onrender.com (`/healthz` answers `{"ok":true}`, and the Telegram bot gets its messages there) |
+| Live server | https://callout-dih6.onrender.com (`/healthz` answers `{"ok":true}`) |
+| Status page | https://callout-dih6.onrender.com/status (which parts are on, no names or positions) |
 | Code | https://github.com/Sireadell/callout |
 
-## A flood night with Callout
+## A Saturday round with Callout
 
-Six volunteers are checking houses on Elm Street. Each one sees this on the lens:
+Maria leads a Saturday welfare-check round. Six volunteers knock on the doors of older people who live alone, each with an area: Ana has A1, Ben has A2. Maria stays at the hall with the team's Telegram group.
+
+Ana's lens (bright main line, dim status, dim hint):
 
 ```
-Elm Street
-Area A1
-
 Next check-in 08:42
 
-Team 5/6 checked in
+A1
+
+Team 5/6 checked in ━ Saturday round
+
+Tap: check in. Hold: talk. Double: exit.
 ```
 
-Ana taps the ring to check in. At a house with someone inside, she taps Clue and says "person inside". A map pin lands in the group with four reply buttons. The coordinator presses "Stay where you are" and that line appears on Ana's lens.
+Ana taps the ring to check in. Nobody answers at number 14, so she picks the quick clue "No answer" from the menu. It lands in the group as a map pin with reply buttons. Maria presses "Move to your next area", it shows on Ana's lens, and Ana taps once for "got it". When Maria asks "How many people inside?", Ana answers with one tap.
 
-Ben misses his check-in. At 17 minutes the coordinator gets a notice with Ben's last position. At 22 minutes the whole team is told. When Ben checks in, the group sees that too.
+Ben misses a check-in (due every 15 minutes by default). At 17 minutes Maria gets his last position and a "Reached them, mark OK" button. At 22 minutes the whole team is told. At `/end`, everyone's counts go to the group as a table (and to Discord and a Google Sheet if set up), with a short summary if AI is on.
 
-At `/end`, the debrief goes to Telegram (and Discord and a Google Sheet if set up), and the server deletes every position. Map pins and notices that show coordinates stay in the group, protected from forwarding, unless the coordinator sends `/end clear`, which also deletes them.
+Delivery drivers and flood wardens on a flood night work this way too.
 
 ## Check it in one minute
 
@@ -43,192 +49,156 @@ npm run proof
 npm test
 ```
 
-To see the hosted server is up, open https://callout-dih6.onrender.com/healthz. It should answer `{"ok":true}`.
-
 | Command | What it shows | Result today |
 |---|---|---|
-| `npm run proof` | A full run against a fake Telegram chat: pairing, clue pin, reply to the lens, missed check-in notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, and that no positions are kept afterwards | 20 of 20 checks pass, 31 messages sent |
-| `npm test` | Server tests, with a fake clock so the timers run in milliseconds | 85 of 85 pass |
-| `cd glasses; npm install; npm test` | Lens text and head-motion tests | 16 of 16 pass |
+| `npm run proof` | A full run on a fake Telegram chat: pairing, clue pin, reply, notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, clean-up | 23 of 23 checks pass, 36 messages sent |
+| `npm test` | Server tests, with a fake clock so timers run in milliseconds | 153 of 153 pass |
+| `cd glasses; npm install; npm test` | The lens app against fake glasses and a fake server | 53 of 53 pass |
+| `npm ci --prefix glasses; npm run panel:proof` | The real lens app against a local server, with fake glasses input and a fake Telegram | All checks pass |
 
-The glasses app is also packed as `callout.ehpk`, built to talk to the live server, which is on its allowed network list in `glasses/app.json`. I haven't uploaded it to Even Hub yet, because I'm still waiting on an Even account, and it hasn't run on real glasses.
-
-## What it uses from the Even Hub SDK
-
-| Part of the SDK | How Callout uses it |
-|---|---|
-| Startup page and text container | The glance screen: run, area, check-in clock, team count, last reply |
-| Text update in place | The clock and notices change without rebuilding the screen |
-| Menu | Check in, clue by voice, quick clue, ask team for backup, repeat reply, photo, sign out |
-| List container | The four quick clues, one tap each |
-| Tap, double tap and swipe events | Tap checks in or says "got it". Double tap opens the exit dialog. Swipe cancels |
-| Microphone audio | Voice clue and the spoken "OK", with the wearer's own voice kept and frames marked as someone else dropped |
-| Motion sensor | "Still there?" after about five minutes with no head movement |
-| Device status | Battery, worn, in case and connection, sent to the coordinator as plain facts |
-| App location | Last known position on clues, check-ins and the live location |
-| Camera and photo album | A photo on the last clue |
-| Local storage | The pairing token and the queue of items waiting for signal |
-| Exit dialog | Double tap and Sign out both end with the system exit dialog |
-
-## Track 1, Messaging and News: Telegram is the core integration
-
-Telegram is where the team lives, so that's where I built the core integration. The bot sets up the group, hands out pairing codes, posts every clue and notice, and carries the coordinator's replies back to the lens.
-
-### Best Telegram integration: the best use of Telegram on G2 I could make
-
-Of the four kinds Telegram offers (accounts, bots, channels or Mini Apps), Callout uses a bot and a Mini App. I left out user accounts on purpose. Acting as someone's own account would mean reading their private chats, and that doesn't fit a tool that promises to forget positions.
-
-| What it does | Telegram feature |
-|---|---|
-| Add-to-group link that asks for exactly the rights it needs | `startgroup` link with `admin=pin_messages+manage_topics` |
-| Tells the coordinator which right is missing | `my_chat_member` update |
-| Short command list for everyone, full list for admins | `setMyCommands` with `all_chat_administrators` scope |
-| Volunteer links their private chat with one tap | `/start CODE` deep link |
-| One status board, pinned and edited in place | `sendMessage`, `pinChatMessage`, `editMessageText` |
-| Clues arrive as map pins with reply buttons | `sendVenue`, inline keyboard |
-| Live location per volunteer, stopped at the debrief | `sendLocation` with live period, `editMessageLiveLocation` |
-| One forum topic per run, closed at the end | `createForumTopic`, `closeForumTopic` |
-| Photo on a clue | `sendPhoto` as a reply to the clue |
-| Check-ins are quiet, missed check-ins buzz | `disable_notification` |
-| Anything with a position cannot be forwarded or saved | `protect_content` |
-| Coordinator reacts: thumbs up shows "Seen" on the lens, OK hand "OK", heart "Thanks" | `message_reaction` update |
-| Bot reacts OK hand to confirm a reply reached the lens | `setMessageReaction` |
-| Coordinator dashboard inside Telegram | Mini App (`web_app` button, sign-in data checked on the server) |
-| Only the person who set up the team, or a group admin, can run, end or reply. Everyone else can read the board | `getChatMember`, checked on every command and button |
-| "Reached them, mark OK" button on missed check-in notices, so a solved problem stops alarming | Inline button, notice edited for the team |
-| Volunteer gets a quiet "due soon" message and a loud "check-in time" message in their own private chat, with a Check in button that works even when the phone has paused the glasses app | Private chat, inline button, only that person's chat can press it |
-| If the coordinator never pressed Start, notices come back to the group instead of being lost | Send fails, falls back to the group and says so |
-| Reply seen on the lens puts an eyes reaction on the coordinator's own message | `setMessageReaction` |
-| Ask team for backup from the lens menu: a loud team notice with a map pin, worded as a request | `sendVenue`, loud notification |
-| Stays under Telegram's limits | 3.1 seconds between group sends, waits and retries on 429 |
-| Webhook or polling | `setWebhook` with a secret header, or `getUpdates` |
-
-The coordinator can answer a clue four ways: press a button, reply to the clue, react to it, or send `/reply Ana <text>`.
-
-Discord works as a second channel: notices through a webhook, and reply buttons when a bot is set up (button presses are signature checked).
-
-## Track 4: the Sheet and AI
-
-This is my second track, and it's tied into the same run as the Telegram side. The Sheet fills the team at the start and keeps the record at the end. The AI keeps the lens to one readable line.
-
-| Part | What it does |
-|---|---|
-| Google Sheet in | Coordinator lists names and areas in a Volunteers tab, then `/import` gives everyone a pairing code |
-| Google Sheet out | At `/end`, one row per volunteer goes to a Debrief tab and one row per clue to a Clues tab. No positions are written |
-| AI one-line reply | A long coordinator message is shortened to one line for the lens. The full text stays under Repeat reply |
-| AI run summary | Three plain sentences posted to the group at `/end` |
-
-The AI only sees counts and clue words. No names, no positions. It runs on the server with Claude or OpenRouter, and only if a key is set. Without a key, long replies are trimmed instead.
+GitHub Actions runs all four on each push. The glasses app is on Even Hub as a private beta (0.1.0), with 3 testers invited. None had accepted when I last checked, so nobody has run it on real glasses yet. That beta holds the 25 November build, not the lens changes below.
 
 ## The judging lines
 
 | Judging line | Where you see it |
 |---|---|
-| Useful at a glance | Run, area, check-in clock, "Team 3/4 checked in", the last reply, low battery and no signal lines |
-| Read and write by voice or tap | Check in by ring tap or by saying "OK". Clue by voice (4 seconds, sends itself after 3 seconds, "cancel" or a swipe stops it), from a list of 4 quick clues, or with a photo |
-| Technical | Check-ins and clues made with no signal are kept on the phone and sent in order when it returns, each with the time it was made (the server caps that time at 30 minutes and never accepts the future). `/interval 5` to `/interval 60` sets the check-in gap for a run. Timers live on the server, so a paused phone still gets noticed. Voices that are not the wearer's are dropped. Speech to text runs on the server and nothing is stored |
-| Display and voice | Plain glyphs only, since the lens drops emoji. Every gesture changes the screen. Double tap on the main screen opens the exit dialog |
-| Business and safety | Same wording on lens and bot: team notices only, not an emergency service. Positions deleted when the run ends |
+| "Usefulness on G2 · 30%. Solves a real everyday moment, works at a glance and hands-free." | The check-in on a field shift. At a glance: countdown, area, team count. Hands-free: hold to talk, and a due check-in listens for "OK" |
+| "Read and write · 25%. Acting is fast: a short phrase, one tap or the ring, with smart defaults or AI drafts instead of long dictation." | Judged first. Read: the reply as one line, and questions with up to 3 one-tap answers. Write: one tap checks in, picks a quick clue or says "got it". Or hold, speak, let go. The coordinator answers with 4 buttons, up to 2 AI suggestions, a reaction or a line |
+| "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram. 153 server tests, 53 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
+| "UX for display and voice · 15%. Clear on a 576 × 288 monochrome display, natural by voice." | A bright main line, a dim status line and a dim hint, each with a line limit. Plain glyphs (● ○ ▲), since the lens drops emoji. Every gesture gets an answer on screen |
+| "Business potential and safety · 10%. Real users and demand, careful with data and money." | Team notices only, not an emergency service. "I'm not OK" never checks in. Only the coordinator can act. No position kept after a run, keys only as hashes, the run notice says what goes to the AI. No real users yet, buyers are a guess |
+
+## On the glasses
+
+| Part of the Even Hub SDK | How Callout uses it |
+|---|---|
+| Startup page, three text containers | The three boxes, updated in place |
+| Tap, double tap, swipe, long press, event source | Ring or right temple tap checks in, left temple repeats the reply. Hold to talk. Double tap exits. Swipe cancels |
+| Menu and list container | Lens menu, quick clues, one-tap answers |
+| Microphone audio | Hold to talk (up to 10 s), Clue by voice (4 s), the spoken "OK". Frames marked as another speaker are dropped, an app guess per the SDK, untested with a second voice |
+| Motion sensor, device status | "Still there?" after about five minutes with no head movement. Battery, worn, in case, connection |
+| App location, camera, album | Last known position on clues and check-ins. A photo on the last clue |
+| Local storage, exit events | Sign-in key and the offline queue. Closing the app tells the coordinator |
+
+Speech can mean a check-in, quick clue, backup (confirm screen only), cancel, or a clue. "Not", "no", "help", "hurt" never check in.
+
+## Track 1 (Messaging and News) and Best Telegram
+
+Of Telegram's accounts, bots, channels and Mini Apps, Callout uses a bot and a Mini App. I left out user accounts: acting as someone means reading their private chats.
+
+| What it does | Telegram feature |
+|---|---|
+| Add-to-group link with exactly the rights needed; says which is missing; admins get all commands | `startgroup` with `admin=`, `my_chat_member`, `setMyCommands` |
+| `/join 4821` with the code on the lens; the coordinator picks the area; the sender's chat links | Inline keyboard |
+| Refusals and group pairing codes shown to one person only, never safety notices | Ephemeral messages |
+| One status board, pinned and edited in place | `pinChatMessage`, `editMessageText` |
+| Clues and backup requests as map pins with reply buttons, "Ask a question" and up to 2 "AI:" suggestions. Mark OK green, Check in blue | `sendVenue`, inline keyboard, button `style` |
+| Live location (stopped at the end), a topic per run, a photo under its clue | `editMessageLiveLocation`, `createForumTopic`, `sendPhoto` |
+| Check-ins quiet, missed ones buzz, positions can't be forwarded | `disable_notification`, `protect_content` |
+| Thumbs up shows "Seen" on the lens, OK hand "OK", heart "Thanks". The bot reacts once a reply is seen | `message_reaction`, `setMessageReaction` |
+| Debrief as a table, with areas nobody checked in from | Rich message table, plain text fallback |
+| Coordinator dashboard, positions as dots, no map service | Mini App, sign-in checked on the server |
+| Only the setup person or an admin can act; one coordinator can run two teams | `getChatMember` |
+| "Check-in time" in the volunteer's own chat, with a Check in button that works while the app is paused | Private chat |
+| Stays under limits, webhook or polling | 3.1 s between group sends, retry on 429, `setWebhook` with a secret |
+
+Discord is a second channel: webhook notices, and signature-checked reply buttons that only ids in `DISCORD_COORDINATOR_IDS` can press.
+
+## Track 4: the Sheet and AI
+
+| Part | What it does |
+|---|---|
+| Sheet in and out | A Volunteers tab feeds `/import`. At `/end`, rows go to a Debrief tab (with the AI summary) and a Clues tab. No positions |
+| AI one-line reply | A message over 60 characters becomes one lens line; the full text is under Repeat reply |
+| AI suggestions | Up to 2 reply buttons under each clue (never on safety notices), and up to 3 answers for an open question. Yes or no and number questions use word rules |
+| AI run summary | Three plain sentences posted at `/end` |
+
+What goes to the AI service, only if a key is set (Claude or OpenRouter): clue words, coordinator replies over 60 characters, and open questions. The server adds no names or positions, but words go as typed or said, so a name inside one goes too, and the one-line rewrite keeps names, places and numbers. The summary also gets the run length and counts. Without a key, long replies are trimmed and answers come from word rules.
 
 ## How each claim is checked
 
-| Claim | How it is shown | Status |
+| Claim | Shown by | Status |
 |---|---|---|
-| Clue becomes a map pin with four buttons, protected from forwarding | `npm run proof` ([proof.js](https://github.com/Sireadell/callout/blob/main/server/proof.js)), [bot.test.js](https://github.com/Sireadell/callout/blob/main/test/bot.test.js) | Tested, seen on real Telegram |
-| Missed check-in: coordinator at 17 minutes, whole team at 22 | `npm run proof`, [engine.test.js](https://github.com/Sireadell/callout/blob/main/test/engine.test.js) | Tested, seen on real Telegram with short timers |
-| Only the setup person or a group admin can run, end or reply | [review.test.js](https://github.com/Sireadell/callout/blob/main/test/review.test.js), `npm run proof` | Tested with a fake Telegram. A plain-member refusal needs a second account |
-| Mark OK, private check-in nudges, backup request, eyes reaction | [review.test.js](https://github.com/Sireadell/callout/blob/main/test/review.test.js), `npm run proof` | Tested, seen on real Telegram |
-| Offline queue keeps its own time (30 minute cap, never the future) | [review.test.js](https://github.com/Sireadell/callout/blob/main/test/review.test.js), [glasses view.test.js](https://github.com/Sireadell/callout/blob/main/glasses/test/view.test.js) | Tested. Not tried on real glasses |
-| `/interval`, fuller debrief, `/end clear` | [review.test.js](https://github.com/Sireadell/callout/blob/main/test/review.test.js) | Tested with a fake Telegram only |
-| Photo send leaves out empty fields (the "undefined" bug) | [telegram.test.js](https://github.com/Sireadell/callout/blob/main/test/telegram.test.js) | Tested, seen on real Telegram |
-| Positions deleted at the end, none kept | `npm run proof`, [engine.test.js](https://github.com/Sireadell/callout/blob/main/test/engine.test.js) | Tested |
-| No emergency, life-saving or health wording anywhere | `npm run proof`, [engine.test.js](https://github.com/Sireadell/callout/blob/main/test/engine.test.js), [glasses view.test.js](https://github.com/Sireadell/callout/blob/main/glasses/test/view.test.js) | Tested |
-| Sheet in and out, AI line and summary | [ai.test.js](https://github.com/Sireadell/callout/blob/main/test/ai.test.js), [bot.test.js](https://github.com/Sireadell/callout/blob/main/test/bot.test.js) | Tested with fakes. Sheet and AI each ran for real outside Telegram |
-| "Still there?" from head motion | [motion.test.js](https://github.com/Sireadell/callout/blob/main/glasses/test/motion.test.js) | Tested. The simulator sends no motion, so not tried live |
-| Voice, Discord buttons, Mini App | [stt.test.js](https://github.com/Sireadell/callout/blob/main/test/stt.test.js), [discord.test.js](https://github.com/Sireadell/callout/blob/main/test/discord.test.js), [miniapp.test.js](https://github.com/Sireadell/callout/blob/main/test/miniapp.test.js) | Tested with fakes only. See "Not yet checked live" |
-| Double tap exit, swipe cancel, voice timer, dropping other voices | [glasses main.js](https://github.com/Sireadell/callout/blob/main/glasses/src/main.js) | Built, no automated test. Not tried on real glasses |
-
-## Bugs the live test found
-
-Running on the real app found four bugs that fakes had hidden. All four are fixed and have a test: the status board posted three times when notices arrived together, turning on Topics changed the group's id and the bot lost its team, a photo failed because an empty button field was sent as the text "undefined", and a dropped connection lost the message (about 1 send in 8 on my Wi-Fi), so the server now tries once more.
+| Clue becomes a protected map pin with reply buttons | [proof.js](server/proof.js), [bot.test.js](test/bot.test.js) | Tested, seen on real Telegram |
+| Missed check-in: coordinator at 17 minutes, team at 22 | [engine.test.js](test/engine.test.js) | Tested, seen live with a 5 minute gap (notice at 2 minutes overdue) |
+| Only the setup person or an admin can run, end or reply | [review.test.js](test/review.test.js) | Tested, seen live from a second account, for `/end` and a reply button |
+| Mark OK, private nudges, backup, eyes reaction, `/interval` | [review.test.js](test/review.test.js) | Tested, seen on real Telegram |
+| No position kept after a run, keys and codes only as hashes | `npm run proof`, [engine.test.js](test/engine.test.js) | Tested. The live Sheet copy, read after a run: 0 coordinate-shaped numbers, no raw keys or codes |
+| "I'm not OK", "no" and "help" never check in; backup never sent by voice alone | [voice.test.js](glasses/test/voice.test.js), [intent.test.js](test/intent.test.js) | Tested. Live by voice for "I am not OK" only (see below) |
+| Hold to talk, three-box lens, quick clues per run, one-tap answers, 4 digit join | [glasses/test](glasses/test), [ask.test.js](test/ask.test.js), [join.test.js](test/join.test.js) | Tested, and in the simulator against a local copy of the server. Questions and answers not live yet |
+| Replies pushed by a held request, `/status` timings | [longpoll.test.js](test/longpoll.test.js) | Tested with fakes. Deployed, but no reply has reached a lens through it live yet |
+| One-person messages, AI suggestions, button colours, table debrief, two teams, app-closed notice | [private.test.js](test/private.test.js), [drafts.test.js](test/drafts.test.js), [debrief.test.js](test/debrief.test.js), [closed.test.js](test/closed.test.js) | Tested. Seen live: a code shown "Only visible to you" and AI buttons appearing (never pressed). The rest fake Telegram only |
+| Offline queue keeps its own time (30 minute cap, never the future) | [review.test.js](test/review.test.js) | Tested in code. No real signal loss yet |
+| `/end clear` | [review.test.js](test/review.test.js) | Fake Telegram only |
+| No emergency, life-saving or health wording; AI suggestions with words like trapped or hurt are dropped | [engine.test.js](test/engine.test.js), [view.test.js](glasses/test/view.test.js), [ai.test.js](test/ai.test.js) | Tested |
+| Sheet in and out, AI line and summary | [ai.test.js](test/ai.test.js) | Tested. Ran live with a real Sheet and a real `/end` |
+| "Still there?", Discord buttons, Mini App | [motion.test.js](glasses/test/motion.test.js), [discord.test.js](test/discord.test.js), [miniapp.test.js](test/miniapp.test.js) | Tested with fakes only |
 
 ## What I've seen work on real Telegram
 
-I ran a full run on the live Telegram app with my own bot and group:
+With my own bot and group I saw the admin link, topics, board, clue pins, photos, protected content, live location, reactions, replies on the lens, notices (short timers) and `/end`. With three accounts, a volunteer's `/end` was refused, and the `?start=` link from a second account answered "Linked: Ana, A1." `/sheet`, `/import` and `/end` worked with a real Google Sheet (3 volunteers in, debrief rows out).
 
-`/start` help and the admin link, the rights message in all three states, `/team`, `/run` with the consent line, `/add` with a pairing code, the private `/start CODE` link, a forum topic per run and closing it at the end, the pinned status board, a clue as a map pin with four buttons, a photo on a clue, protected content (Telegram showed "copying and forwarding is not allowed"), live location, a button press showing on the lens, a thumbs up showing "Seen" on the lens, a typed reply with the OK hand back, the missed check-in notice with buttons, the whole-team notice, the "gone quiet" notice, and `/end` with the board marked finished and live location stopped.
+On 25 and 26 November I tested the live server in a real Telegram group, with my own accounts and two Even Hub simulators. No real glasses and no other people. Ana (A1) and Ben (A2) paired with a 5 minute gap. Ana checked in by tap and sent the quick clue "Road blocked", which reached the topic with four reply buttons but no map pin (the simulator gives no location). My second account's button press got "Only the coordinator can do that". The coordinator's press showed on Ana's lens, her "got it" posted Ana saw: "Move to your next area", and Repeat reply brought it back. Ben's missed check-in notice posted at 2 minutes overdue; Mark OK edited it. `/end` posted the counts (Ana 5 check-ins, 0 missed; Ben 1 check-in, 1 missed, marked OK once; 1 clue), the AI summary and the Sheet debrief (2 people, 1 clue), and closed the topic. It used the earlier lens.
 
-For the notices I shortened the timers so I didn't have to wait 17 minutes.
+## Bugs the live test found
 
-## Not yet checked live
+All six are fixed and tested: the board posted three times when notices came together; turning on Topics changed the group's id and the bot lost its team; an empty field was sent as "undefined" and a photo failed; a dropped connection lost the message (about 1 send in 8 on my Wi-Fi), so the server retries once; `/import` after adding someone by hand listed them twice (5 people, not 3; a live re-check counted 3); and the AI summary said "10-minute" while the counts said 9.
+
+## Not yet checked live, and known gaps
 
 | Part | Where it stands |
 |---|---|
-| Voice clue and spoken OK | Built. The speech to text step has run on real audio twice (a recorded clip, then a computer-spoken 4.8 second clip that came back word for word in 5.9 seconds, with the transcript deleted afterwards). Not tried with real glasses audio, since the simulator mic gives almost nothing |
-| Google Sheet | Ran for real with a service account: the Volunteers tab was read (3 names and areas) and a debrief row and a clue row were written, with no positions. Not yet run through the `/sheet`, `/import` and `/end` commands in Telegram |
-| Discord | The webhook notice reached a real Discord channel (1 second, one test message). Reply buttons need a Discord bot and are tested with fakes only |
-| AI reply and summary | Ran for real through OpenRouter (Claude Haiku): a long reply came back as "Go to main road, wait by red car. Boat team arrives in 10 min" in 2.1 seconds, and a run summary in 2.6 seconds. If Claude turns a request down, the server falls back to OpenRouter. Not yet run through a real `/end` in Telegram |
-| Mini App dashboard | Built, and it now has a public https address on the live server. I haven't opened it inside Telegram yet |
-| Voice from someone else | Dropping frames the app marks as another speaker has not been tried with real audio |
-| `/end clear` | Tested with a fake Telegram only |
-| Offline queue | Tested in code only. Losing and getting back signal on real glasses hasn't happened yet |
-| Glasses package | `callout.ehpk` is built against the live server and the 16 glasses tests pass. Not uploaded to Even Hub yet, since I'm waiting on an Even account |
-| Real G2 glasses | Everything above ran in the simulator only. Camera, album and the "Still there?" prompt from head motion are untested, since the simulator sends no photos or motion |
-| Newest Telegram parts | The coordinator-only check, Mark OK button, private check-in nudges, backup request and eyes reaction are tested with a fake Telegram. The nudges, Mark OK, backup pin and reactions have now run on real Telegram. The plain-member refusal is covered by tests only (it needs a second account) |
-| Not built | A voice note copy of each spoken clue, and Telegram's new ephemeral messages |
+| Voice | 26 November, live server, simulator, PC microphone, phrases played by the computer's voice (not a person, not real glasses), hold to talk: "The bridge on Mill Lane is flooded" came back word for word and posted with reply and AI buttons. "I am OK" checked in and "I am not OK" didn't. "House empty" was first heard as "Margin. Only house empty." and posted as a free clue, then matched on the second try. Not tried: spoken "backup" and "cancel", the "OK" on an overdue check-in, a human voice, the glasses mic |
+| New in this version | Apart from voice, the one-person code, AI buttons and the `/run` AI notice: fakes or simulator only |
+| App closed | The simulator sends no exit event, so fake glasses only. Unknown whether the notice leaves a real phone |
+| Discord | A webhook notice reached a real channel in 1 second. Reply buttons with fakes only |
+| AI | Ran for real through OpenRouter (Claude Haiku): one line in 2.1 s, a summary in 2.6 s, AI buttons seen appearing under a live clue, never pressed. Answer choices not yet |
+| Mini App | On the live server. Not opened inside Telegram yet |
+| Real G2 glasses | Simulator only. Camera, album, left temple tap and "Still there?" are untested, since it sends no photos or motion and always reports the right temple |
+| Not built | A voice note copy of spoken clues, an arrow to your area, a trail map, a try-out page for judges |
+| Gaps not fixed yet | Without a linked coordinator chat, pairing codes go to the group with a warning if Telegram can't show them to one person, and the first to open a `?start=` link becomes that volunteer's chat (the group is told who). A first private `/start` shows volunteers the coordinator commands |
 
 ## What this is not
 
 - Not a life-saving tool, not an emergency service, and no replacement for radios or calling 999 or 911.
-- No route finding and no medical anything. A "Still there?" prompt asks a question. It never says anything about someone's health.
-- Positions only go to your own team's group, and never to the AI.
-- "Ask team for backup" is a message to your own team. It does not call anyone and it does not promise that help is coming.
-- Nothing listens in the background. The mic opens on a tap, or for three short rounds when a check-in is overdue or the app asks "Still there?".
+- No route finding, nothing medical. "Still there?" only asks.
+- Positions only go to your team's chat (Telegram, and Discord if set up), never to the AI.
+- "Ask team for backup" is a team message. It calls nobody.
+- Nothing listens in the background. The mic opens while you hold to talk or pick Clue by voice, and for three short rounds when a check-in is due or on "Still there?".
 - No camera on the glasses. Photos come from the phone.
 
 ## Privacy and consent
 
-Everyone in a run's group agrees that their position is shared with the group while the run is active. Positions are deleted when the run ends.
+At `/run`, everyone who joins agrees to share their position with the group during the run. If AI is on, the same message says what goes to the AI service. During a run the server holds each volunteer's latest position and recent trail. At `/end` it clears those and every clue's position, stops live locations, and deletes the run's keys and codes. Its notice log saves any coordinate as "[position]". So after a run the server keeps no position.
 
-If you host Callout somewhere that wipes its disk on restart, set `STATE_SHEET_ID` and the server keeps a private copy of its teams, runs and pairing codes in your own Google Sheet (no positions, no trails). Without it, nothing leaves the server.
+Pins and notices with coordinates stay in the group, protected from forwarding, unless the coordinator sends `/end clear`. The Mini App shows positions as dots to the coordinator during a run only.
 
-## Where the live copy runs
+Sign-in keys and pairing codes are only ever stored as one-way hashes. If your host wipes its disk on restart, `STATE_SHEET_ID` keeps a private copy of the state in your own Google Sheet, written after each pairing, check-in or run end. It never has a position, even during a run, but it holds names, areas and Telegram chat ids, so keep it private.
 
-The live server is the same Docker image as this repo, on Render's free plan. That plan puts a server to sleep when nobody uses it, so a cron-job.org job opens `/healthz` every 5 minutes to keep it awake. The free plan can also wipe the disk on a restart, so the live server keeps its private Sheet copy turned on: teams, runs and pairings come back, positions were never in it. It's fine for a demo. A real team would want a paid plan or its own server.
+With a speech to text key, the provider deletes the transcript once the words come back. Photos go straight to the group. The server keeps neither. Pairing codes work once and expire after 15 minutes, join codes after 10.
 
-Voice is turned into text on the server, and the transcript is deleted at the speech provider as soon as the words come back. Photos are passed straight to the group. The server keeps neither. Pairing codes work once and expire after 15 minutes.
+## Who would pay (not validated)
+
+This is a guess. I haven't asked a buyer. I'd start with groups that already run weekly volunteer shifts from a group chat: welfare-check rounds, charities with delivery drivers, local flood warden schemes. I'd expect the organisation to pay per team, but I haven't tested any price, and every volunteer would need G2 glasses.
 
 ## Run it with your own bot
 
-1. Get a bot token from @BotFather in Telegram.
-2. Copy the settings file and put the token in it:
+1. Get a bot token from @BotFather and put it in the settings file:
    ```powershell
    cd callout
    Copy-Item .env.example .env
    notepad .env
    ```
-3. Start the server. The log says "Telegram: polling".
-   ```powershell
-   npm start
-   ```
-4. Send `/start` to your bot and use the link it gives you to add it to a group as admin. It answers "All set".
-5. In the group, send `/team Test`, then `/run Elm Street`, then `/add Ana | Area A1`. A pairing code appears.
-6. In a second window, start the glasses app:
-   ```powershell
-   cd callout\glasses
-   npm install
-   npm run dev
-   ```
-7. Open the page in the Even Hub simulator and enter the code. Add `?dev=1` to the address for a panel that fakes battery, glasses off and signal, which the simulator doesn't send.
-8. Tap to check in, pick a quick clue, and watch the pin land in the group.
-9. Send `/end` for the debrief.
+2. Run `npm start`. The log says "Telegram: polling".
+3. Send `/start` to your bot and use its link to add it to a group as admin.
+4. In the group, send `/team Test`, then `/run Elm Street`, then `/add Ana | Area A1`. A pairing code appears.
+5. In a second window: `cd callout\glasses; npm install; npm run dev`.
+6. Open the page in the Even Hub simulator and enter the code, or send `/join` with the lens's 4 digits. `npm run panel` fakes battery, signal and glasses off.
+7. Tap to check in, pick a quick clue, watch the pin land, then send `/end`.
 
-Every other key in `.env` is optional. Each one switches on one part (voice, Sheet, Discord, AI, webhook, Mini App) and Callout runs fine without it.
+Other `.env` keys are optional; each turns on one part. The live server is this Docker image on Render's free plan, kept awake by a call every 5 minutes, with the Sheet copy on because a restart can wipe its disk.
 
-## What existed before
+## What existed before 23 November
 
-This repo was started on November 24 for this hackathon. The approach to Telegram alerts and to server-side speech to text comes from two earlier projects of mine (a token tracker's Telegram alerts and a voice record book that used AssemblyAI).
+Nothing in this repo. I started it on 24 November for this hackathon. My Telegram alert and server-side speech to text approach comes from two earlier projects (a token tracker and a voice record book on AssemblyAI).
 
----
-
-Has everyone on my team checked in, and if not, who and where were they last? That's the question Callout answers, on the lens and in the group chat.

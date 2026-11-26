@@ -6,7 +6,7 @@ const SYSTEM_DEBRIEF = 'Summarise a field team check-in run in at most 3 short p
 const SYSTEM_ANSWERS = 'A team coordinator asks a field volunteer a question. Give 3 short answers the volunteer could send, one per line, each at most 16 characters. Plain words, no numbering, no emoji, no medical or emergency wording. Reply with the lines only.';
 const SYSTEM_DRAFTS = 'A field volunteer sent a short report to the team coordinator. Suggest 2 short replies the coordinator could send back, one per line, each at most 40 characters. Plain words: an acknowledgement or a practical next step or question. No promises about help arriving, no medical or emergency wording, no emoji, no numbering. Reply with the lines only.';
 // Words an AI suggestion may never contain: nothing that sounds like rescue, dispatch or a medical judgement.
-export const UNSAFE = /\b(sos|911|999|112|emergency|ambulance|rescu\w*|dispatch\w*|diagnos\w*|help is coming|on the way to save|dead|dying|injur\w*|unconscious|safe now|you are safe)\b/i;
+export const UNSAFE = /\b(sos|911|999|112|emergency|ambulance|rescu\w*|dispatch\w*|diagnos\w*|help is coming|on the way to save|dead|dying|injur\w*|unconscious|trap\w*|casualt\w*|victim\w*|wound\w*|bleed\w*|hurt|medic\w*|paramedic\w*|doctor|breathing|alive|drown\w*|safe now|you are safe)\b/i;
 
 // Short suggestions, one per line, from an AI answer: cleaned, guarded, never longer than asked.
 export function cleanLines(text, max, count) {
