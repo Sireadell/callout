@@ -9,6 +9,7 @@ export const DEFAULTS = Object.freeze({
   coordinatorGraceMs: 2 * 60_000, // overdue time before the coordinator is told
   teamGraceMs: 5 * 60_000, // further overdue time before the whole team is told
   silentMs: 3 * 60_000, // no contact from the glasses app for this long
+  closedGraceMs: 20_000, // an app moved to the background is reported only if it stays away this long
   lowBatteryPct: 15,
   pairingTtlMs: 15 * 60_000,
   trailMax: 500,
@@ -174,9 +175,10 @@ export class Engine {
     return { nextDueAt: v.lastCheckin + this.gap(run) };
   }
 
-  heartbeat(token, { battery, charging, inCase, worn, still, pos } = {}) {
+  heartbeat(token, { battery, charging, inCase, worn, still, pos, app, reason } = {}) {
     const { run, v } = this._auth(token);
-    const wasSilent = v.flags.silent;
+    if (app === 'closed') return this._appClosed(run, v, reason);
+    const wasSilent = v.flags.silent || v.closed?.told;
     this._touch(v, pos);
     if (wasSilent) this._emit(run, 'coordinator', 'back_online', `${v.name} (${v.area}) is back online.`, { volunteerId: v.id });
     if (typeof battery === 'number') {
@@ -198,6 +200,19 @@ export class Engine {
       v.flags.still = true;
       this._emit(run, 'coordinator', 'still', `${v.name} (${v.area}): no head movement was seen for a while and Still there? got no answer. This only means no movement was seen. Last position: ${place(v.pos)}.`, { volunteerId: v.id });
     } else if (!still) v.flags.still = false;
+  }
+
+  // The glasses app says it is closing. Moving to the background is often brief, so that one waits a moment.
+  _appClosed(run, v, reason) {
+    v.lastSeen = this.clock.now();
+    if (v.closed || v.status !== 'active') return;
+    v.closed = { at: v.lastSeen, reason, told: false };
+    if (reason !== 'foreground_exit') this._tellClosed(run, v);
+  }
+  _tellClosed(run, v) {
+    v.closed.told = true;
+    const at = new Date(v.closed.at).toISOString().slice(11, 16);
+    this._emit(run, 'coordinator', 'app_closed', `${v.name} (${v.area}): the glasses app was closed at ${at} UTC. Last position: ${place(v.pos)}.`, { volunteerId: v.id });
   }
 
   clue(token, { text, pos, photoId = null, at = undefined }) {
@@ -396,7 +411,9 @@ export class Engine {
           this._emit(run, 'team', 'missed_checkin_team',
             `Still no check-in from ${v.name} (${v.area}), ${mins(overdue)} min overdue. Last position: ${place(v.pos)}. ${TEAM_ONLY}`, { volunteerId: v.id });
         }
-        if (now - v.lastSeen >= this.cfg.silentMs && !v.flags.silent) {
+        if (v.closed && !v.closed.told && now - v.closed.at >= this.cfg.closedGraceMs) this._tellClosed(run, v);
+        // A closed app has been reported already, so "gone quiet" is not repeated for it.
+        if (!v.closed && now - v.lastSeen >= this.cfg.silentMs && !v.flags.silent) {
           v.flags.silent = true;
           this._emit(run, 'coordinator', 'went_silent',
             `${v.name} (${v.area}): the glasses app has gone quiet for ${mins(now - v.lastSeen)} min (phone, signal or app paused). Last position: ${place(v.pos)}.`, { volunteerId: v.id });
@@ -413,7 +430,7 @@ export class Engine {
       if (v.status === 'signed_out') state = 'out';
       if (v.status === 'active') {
         const left = v.lastCheckin + this.gap(run) - now;
-        state = v.flags.silent ? 'silent' : v.step > 0 ? 'overdue' : left <= 0 ? 'due' : 'ok';
+        state = v.flags.silent || v.closed?.told ? 'silent' : v.step > 0 ? 'overdue' : left <= 0 ? 'due' : 'ok';
       }
       return { id: v.id, name: v.name, area: v.area, state, battery: v.battery };
     });
@@ -512,6 +529,7 @@ export class Engine {
   _touch(v, pos) {
     v.lastSeen = this.clock.now();
     v.flags.silent = false;
+    v.closed = null;
     if (pos && typeof pos.lat === 'number' && typeof pos.lng === 'number') {
       v.pos = { lat: pos.lat, lng: pos.lng, at: v.lastSeen };
       v.trail.push(v.pos);
