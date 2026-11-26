@@ -99,7 +99,12 @@ const server = http.createServer(async (req, res) => {
     }
     const fn = routes[`${req.method} ${url.pathname}`];
     if (!fn) return send(res, 404, { error: 'not found' });
-    send(res, 200, await fn(req.method === 'POST' ? await body(req, (url.pathname === '/api/voice' || url.pathname === '/api/photo') ? 900 * 1024 : undefined) : {}));
+    const input = req.method === 'POST' ? await body(req, (url.pathname === '/api/voice' || url.pathname === '/api/photo') ? 900 * 1024 : undefined) : {};
+    // A held request stops waiting if the caller hangs up.
+    const gone = new AbortController();
+    res.on('close', () => { if (!res.writableEnded) gone.abort(); });
+    const out = await fn(input, { signal: gone.signal });
+    if (!gone.signal.aborted) send(res, 200, out);
   } catch (e) {
     send(res, 400, { error: e.message });
   }

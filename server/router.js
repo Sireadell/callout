@@ -122,8 +122,10 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
       if (run?.topicId && team.telegram && telegram) await telegram.closeForumTopic(team.telegram.chatId, run.topicId).catch(() => {});
       return;
     }
+    const from = engine.clock.now();
     const jobs = [];
-    if (team.telegram && telegram) jobs.push(toTelegram(team, n));
+    // A clue's time: from the server having it to Telegram accepting it.
+    if (team.telegram && telegram) jobs.push(toTelegram(team, n).then((sent) => { if (n.kind === 'clue') engine.measure('clueToChat', engine.clock.now() - from); return sent; }));
     if (team.discord && discord && n.kind !== 'clue_photo' && n.kind !== 'run_closed' && n.audience !== 'volunteer' && !(n.kind === 'reply_confirmed' && n.src)) {
       const buttons = keyboardFor(n) ? PRESETS.map((p, i) => ({ label: p, id: `r|${n.volunteerId}|${i}` })) : [];
       if (buttons.length && discord.botToken && team.discord.channelId) jobs.push(discord.postWithButtons(team.discord.channelId, n.text, buttons));

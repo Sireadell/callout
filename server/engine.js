@@ -33,6 +33,7 @@ export class Engine {
     this.runs = {};
     this.pairings = {};
     this.tokens = {};
+    this.timings = {};
   }
 
   // Check-in gap for a run: set with /interval, else the default.
@@ -42,6 +43,7 @@ export class Engine {
     const m = Math.round(Number(minutes));
     if (!(m >= 5 && m <= 60)) throw new Error('between 5 and 60 minutes');
     run.checkinMs = m * 60_000;
+    this._bumpAll(run);
     this._emit(run, 'team', 'interval', `Check-in gap is now ${m} min.`);
     return m;
   }
@@ -52,6 +54,7 @@ export class Engine {
     const clues = [...new Set(list.map((c) => String(c).replace(/\s+/g, ' ').trim()).filter(Boolean))];
     if (clues.length > 4 || clues.some((c) => c.length > 16)) throw new Error('up to 4 clues of up to 16 characters');
     run.quickClues = clues.length ? clues : undefined;
+    this._bumpAll(run);
     this.changed();
     return this.quickClues(run);
   }
@@ -110,6 +113,7 @@ export class Engine {
     const token = randomBytes(24).toString('hex');
     this.tokens[hashKey(token)] = { runId: run.id, volunteerId: v.id };
     this._emit(run, 'team', 'joined', `${v.name} joined (${v.area}).`);
+    this._bumpAll(run);
     this.changed();
     return { token, runId: run.id, name: v.name, area: v.area, nextDueAt: now + this.gap(run) };
   }
@@ -135,6 +139,7 @@ export class Engine {
     if (prevStep === 1) this._emit(run, 'coordinator', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
     if (prevStep === 2) this._emit(run, 'team', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
     this.changed();
+    this._bumpAll(run);
     return { nextDueAt: v.lastCheckin + this.gap(run) };
   }
 
@@ -192,19 +197,36 @@ export class Engine {
   }
 
   // Checks a sign-in key and counts as contact, without handing out any waiting reply.
-  touch(token) { const found = this._auth(token); this._touch(found.v); return found; }
+  touch(token, pos) { const found = this._auth(token); this._touch(found.v, pos); return found; }
+
+  // ---------- telling a waiting lens ----------
+  // Called when something this volunteer's lens shows has changed. The long poll replaces it.
+  wake() {}
+  _bump(v) { v.rev = (v.rev || 0) + 1; this.wake(v.id); }
+  _bumpAll(run) { Object.values(run.volunteers).forEach((v) => this._bump(v)); }
+  hasNews(run, v, rev) { return (v.rev || 0) !== rev || run.replies.some((r) => r.volunteerId === v.id && !r.delivered); }
+  // A lens that asks with an older number never got the later replies (a dropped connection): send them again.
+  resend(run, v, rev) {
+    if (rev < 0) return;
+    for (const r of run.replies) if (r.volunteerId === v.id && r.delivered && !r.confirmedAt && r.rev > rev) r.delivered = false;
+  }
 
   // The one-tap clues on the lens for this run.
   quickClues(run) { return run.quickClues || [...QUICK_CLUES]; }
 
   // What the lens shows. Counts as contact from the glasses app.
-  sync(token, { pos } = {}) {
+  // peek: hand out no replies. contact: false when the contact was already counted (a held request ending).
+  sync(token, { pos, peek = false, contact = true } = {}) {
     const { run, v } = this._auth(token);
-    this._touch(v, pos);
+    if (contact) this._touch(v, pos);
     const now = this.clock.now();
-    const replies = run.replies.filter((r) => r.volunteerId === v.id && !r.delivered);
-    replies.forEach((r) => { r.delivered = true; });
+    const replies = peek ? [] : run.replies.filter((r) => r.volunteerId === v.id && !r.delivered);
+    for (const r of replies) {
+      r.delivered = true;
+      if (!r.sentAt) { r.sentAt = now; this.measure('replyToLens', now - r.at); }
+    }
     return {
+      rev: v.rev || 0,
       runName: run.name, area: v.area, dueInMs: v.lastCheckin + this.gap(run) - now,
       step: v.step, replies: replies.map((r) => ({ id: r.id, text: r.short || r.text, full: r.text, by: r.by })),
       team: this.teamStatus(run.id), quickClues: this.quickClues(run), question: this._openQuestion(v),
@@ -227,6 +249,7 @@ export class Engine {
     v.status = 'signed_out';
     v.step = 0;
     this._emit(run, 'team', 'signed_out', `${v.name} (${v.area}) signed out.`, { volunteerId: v.id });
+    this._bumpAll(run);
     this.changed();
   }
 
@@ -248,6 +271,7 @@ export class Engine {
     v.step = 0; v.nudge = 0; v.flags.silent = false; v.flags.still = false;
     v.marked = (v.marked || 0) + 1;
     this._emit(run, 'team', 'marked_ok', `${v.name} (${v.area}) marked OK by ${by}.`, { volunteerId: v.id });
+    this._bumpAll(run);
     this.changed();
   }
 
@@ -262,6 +286,7 @@ export class Engine {
     if (prev === 1) this._emit(run, 'coordinator', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
     if (prev === 2) this._emit(run, 'team', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
     this.changed();
+    this._bumpAll(run);
   }
 
   reply(runId, { volunteerId, text, by = 'coordinator', short, src }) {
@@ -269,6 +294,8 @@ export class Engine {
     if (!run.volunteers[volunteerId]) throw new Error('unknown volunteer');
     const r = { id: newId('rep'), volunteerId, text: String(text).slice(0, 500), short: short ? String(short).slice(0, 80) : undefined, by, src, at: this.clock.now(), delivered: false, confirmedAt: null };
     run.replies.push(r);
+    r.rev = (run.volunteers[volunteerId].rev || 0) + 1;
+    this._bump(run.volunteers[volunteerId]);
     return r;
   }
 
@@ -281,6 +308,7 @@ export class Engine {
     const line = String(text || '').replace(/\s+/g, ' ').trim();
     if (!line) throw new Error('empty question');
     v.question = { id: newId('q'), text: line.slice(0, 80), by, answers: answers.slice(0, 3).map((a) => String(a).slice(0, 16)), src, at: this.clock.now(), answeredAt: null };
+    this._bump(v);
     return v.question;
   }
 
@@ -295,6 +323,7 @@ export class Engine {
     const text = String(answer || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!text) throw new Error('empty answer');
     q.answeredAt = this.clock.now();
+    this._bump(v);
     this._emit(run, 'coordinator', 'answer', `${v.name} (${v.area}) answered "${q.text}": ${text}`, { volunteerId: v.id, src: q.src });
   }
 
@@ -327,12 +356,12 @@ export class Engine {
           }
         }
         if (overdue >= this.cfg.coordinatorGraceMs && v.step < 1) {
-          v.step = 1; v.missed += 1;
+          v.step = 1; v.missed += 1; this._bumpAll(run);
           this._emit(run, 'coordinator', 'missed_checkin',
             `Missed check-in notice: ${v.name} (${v.area}) is ${mins(overdue)} min overdue. Last position: ${place(v.pos)}. ${TEAM_ONLY}`, { volunteerId: v.id });
         }
         if (overdue >= this.cfg.coordinatorGraceMs + this.cfg.teamGraceMs && v.step < 2) {
-          v.step = 2;
+          v.step = 2; this._bumpAll(run);
           this._emit(run, 'team', 'missed_checkin_team',
             `Still no check-in from ${v.name} (${v.area}), ${mins(overdue)} min overdue. Last position: ${place(v.pos)}. ${TEAM_ONLY}`, { volunteerId: v.id });
         }
@@ -376,6 +405,7 @@ export class Engine {
     stripPositions(run);
     for (const keys of [this.tokens, this.pairings]) for (const [k, ref] of Object.entries(keys)) if (ref.runId === run.id) delete keys[k];
     this.changed();
+    this._bumpAll(run); // held requests end now and learn the run is over
     return debrief;
   }
 
@@ -410,6 +440,21 @@ export class Engine {
   }
   activeRun(teamId) {
     return Object.values(this.runs).filter((r) => r.teamId === teamId && r.status === 'active').at(-1);
+  }
+
+  // ---------- timings ----------
+  // The last 50 measured times of each kind, in memory only.
+  measure(name, ms) {
+    const list = (this.timings[name] ||= []);
+    list.push(Math.max(0, Math.round(ms)));
+    if (list.length > 50) list.shift();
+  }
+  timingSummary() {
+    const at = (sorted, p) => sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)];
+    return Object.fromEntries(Object.entries(this.timings).map(([name, list]) => {
+      const s = [...list].sort((a, b) => a - b);
+      return [name, { samples: s.length, p50Ms: at(s, 0.5), p95Ms: at(s, 0.95) }];
+    }));
   }
 
   // ---------- saving ----------

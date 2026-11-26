@@ -1,4 +1,5 @@
 import { intentOf } from './intent.js';
+import { makeLongPoll } from './longpoll.js';
 
 // One log line that shows whose address the rate limit counts: the caller's, or a proxy in front of the server.
 // Addresses are cut short so no caller can be identified from the log.
@@ -12,6 +13,7 @@ export function describeCaller(req) {
 
 // What the glasses app and the Mini App can ask the server. Kept apart from the web server so it can be tested.
 export function makeRoutes({ engine, stt, miniapp = null, env = process.env }) {
+  const sync = makeLongPoll({ engine });
   return {
     'POST /api/pair': (b) => engine.pair(b.code),
     'POST /api/checkin': (b) => engine.checkIn(b.token, { pos: b.pos, at: b.at }),
@@ -20,7 +22,8 @@ export function makeRoutes({ engine, stt, miniapp = null, env = process.env }) {
     'POST /api/signout': (b) => { engine.signOut(b.token); return { ok: true }; },
     'POST /api/backup': (b) => { engine.needBackup(b.token, { pos: b.pos }); return { ok: true }; },
     'POST /api/confirm': (b) => { engine.confirmReply(b.token, b.replyId); return { ok: true }; },
-    'POST /api/sync': (b) => engine.sync(b.token, { pos: b.pos }),
+    // With "wait" it holds the request until there is news. "signal" fires if the caller goes away.
+    'POST /api/sync': (b, { signal } = {}) => sync(b, signal),
     // Audio from the glasses: base64 of raw 16 kHz 16 bit mono. Returns the words and what they ask for.
     // Nothing is stored and nothing is sent from here.
     'POST /api/voice': async (b) => {
