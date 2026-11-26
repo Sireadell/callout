@@ -12,7 +12,7 @@ import { makeAi } from './ai.js';
 import { makeMiniApp } from './miniapp.js';
 import { makeSheet } from './sheet.js';
 import { makeRoutes } from './api.js';
-import { withoutPositions } from './persist.js';
+import { makeSaver } from './saver.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const PORT = Number(process.env.PORT || 8787);
@@ -37,25 +37,9 @@ if (!fs.existsSync(STATE) && sheet && process.env.STATE_SHEET_ID) {
 }
 
 // Save to disk every few seconds when something changed. With STATE_SHEET_ID set, also keep a copy in the Sheet.
-let lastSaved = '';
-let lastRemote = ''; let remoteAt = 0;
-async function saveRemote() {
-  if (!sheet || !process.env.STATE_SHEET_ID || Date.now() - remoteAt < 30_000) return;
-  const s = JSON.stringify(withoutPositions(engine.snapshot()));
-  if (s === lastRemote) return;
-  remoteAt = Date.now();
-  try { await sheet.writeState(process.env.STATE_SHEET_ID, JSON.parse(s)); lastRemote = s; } catch (e) { console.log('state copy failed:', e.message); }
-}
-function save() {
-  saveRemote();
-  const s = JSON.stringify(engine.snapshot());
-  if (s === lastSaved) return;
-  fs.mkdirSync('data', { recursive: true });
-  fs.writeFileSync(`${STATE}.tmp`, s);
-  fs.renameSync(`${STATE}.tmp`, STATE);
-  lastSaved = s;
-}
-setInterval(() => { engine.tick(); Object.keys(engine.runs).forEach((id) => engine.runs[id].status === 'active' && (router.updateBoard(id), router.updateLocations(id))); save(); }, 5000).unref();
+const saver = makeSaver({ engine, file: STATE, sheet, sheetId: process.env.STATE_SHEET_ID || null });
+engine.changed = () => queueMicrotask(saver.saveNow);
+setInterval(() => { engine.tick(); Object.keys(engine.runs).forEach((id) => engine.runs[id].status === 'active' && (router.updateBoard(id), router.updateLocations(id))); saver.save(); }, 5000).unref();
 
 // ---- very small request helpers ----
 const hits = new Map();
@@ -143,3 +127,14 @@ server.listen(PORT, () => {
   console.log(`Callout server on :${PORT}`);
   if (telegram) startTelegram().catch((e) => console.error('telegram start failed:', e.message));
 });
+
+// A deploy or restart: stop taking requests, save everything, then leave.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.once(signal, async () => {
+    setTimeout(() => process.exit(0), 8000).unref();
+    server.close();
+    server.closeAllConnections();
+    await saver.saveNow();
+    process.exit(0);
+  });
+}

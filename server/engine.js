@@ -72,6 +72,7 @@ export class Engine {
     const code = newCode();
     const expiresAt = this.clock.now() + this.cfg.pairingTtlMs;
     this.pairings[hashKey(code)] = { runId, volunteerId: v.id, expiresAt, used: false };
+    this.changed();
     return { volunteer: v, code, expiresAt };
   }
 
@@ -96,6 +97,7 @@ export class Engine {
     const token = randomBytes(24).toString('hex');
     this.tokens[hashKey(token)] = { runId: run.id, volunteerId: v.id };
     this._emit(run, 'team', 'joined', `${v.name} joined (${v.area}).`);
+    this.changed();
     return { token, runId: run.id, name: v.name, area: v.area, nextDueAt: now + this.gap(run) };
   }
 
@@ -119,6 +121,7 @@ export class Engine {
     v.firstAt ||= v.lastCheckin; v.lastAt = v.lastCheckin;
     if (prevStep === 1) this._emit(run, 'coordinator', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
     if (prevStep === 2) this._emit(run, 'team', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
+    this.changed();
     return { nextDueAt: v.lastCheckin + this.gap(run) };
   }
 
@@ -208,6 +211,7 @@ export class Engine {
     v.status = 'signed_out';
     v.step = 0;
     this._emit(run, 'team', 'signed_out', `${v.name} (${v.area}) signed out.`, { volunteerId: v.id });
+    this.changed();
   }
 
   // A team request from the lens menu. Worded as a request to the team, never as an alarm.
@@ -228,6 +232,7 @@ export class Engine {
     v.step = 0; v.nudge = 0; v.flags.silent = false; v.flags.still = false;
     v.marked = (v.marked || 0) + 1;
     this._emit(run, 'team', 'marked_ok', `${v.name} (${v.area}) marked OK by ${by}.`, { volunteerId: v.id });
+    this.changed();
   }
 
   // A check-in pressed in the volunteer's own private chat with the bot.
@@ -240,6 +245,7 @@ export class Engine {
     v.firstAt ||= v.lastCheckin; v.lastAt = v.lastCheckin;
     if (prev === 1) this._emit(run, 'coordinator', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
     if (prev === 2) this._emit(run, 'team', 'back_in_touch', `${v.name} (${v.area}) has checked in again.`, { volunteerId: v.id });
+    this.changed();
   }
 
   reply(runId, { volunteerId, text, by = 'coordinator', short, src }) {
@@ -321,6 +327,7 @@ export class Engine {
     for (const v of Object.values(run.volunteers)) v.tgChatId = null;
     stripPositions(run);
     for (const keys of [this.tokens, this.pairings]) for (const [k, ref] of Object.entries(keys)) if (ref.runId === run.id) delete keys[k];
+    this.changed();
     return debrief;
   }
 

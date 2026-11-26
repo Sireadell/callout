@@ -65,8 +65,8 @@ export function makeSheet({ serviceAccount, fetchImpl = fetch, now = () => Date.
       await ensureTab(id, 'State');
       const text = JSON.stringify(state);
       const rows = []; for (let i = 0; i < text.length; i += 40000) rows.push([text.slice(i, i + 40000)]);
-      await api(`${id}/values/${encodeURIComponent('State!A:A')}:clear`, { method: 'POST', body: '{}' });
-      await api(`${id}/values/${encodeURIComponent('State!A1')}?valueInputOption=RAW`, { method: 'PUT', body: JSON.stringify({ values: rows.length ? rows : [['']] }) });
+      await api(`${id}/values/${encodeURIComponent('State!A1')}?valueInputOption=RAW`, { method: 'PUT', body: JSON.stringify({ values: rows }) });
+      await api(`${id}/values/${encodeURIComponent(`State!A${rows.length + 1}:A`)}:clear`, { method: 'POST', body: '{}' });
       return rows.length;
     },
     async readState(id) {

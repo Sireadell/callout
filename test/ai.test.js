@@ -148,7 +148,7 @@ test('the outside copy of the state has no positions, and round trips through th
     if (url.includes('oauth2')) return { ok: true, json: async () => ({ access_token: 'T', expires_in: 3600 }) };
     if (url.includes('fields=sheets')) return { ok: true, json: async () => ({ sheets: [...tabs].map((title) => ({ properties: { title } })) }) };
     if (url.includes(':batchUpdate')) { tabs.add(JSON.parse(init.body).requests[0].addSheet.properties.title); return { ok: true, json: async () => ({}) }; }
-    if (url.includes(':clear')) { stored = []; return { ok: true, json: async () => ({}) }; }
+    if (url.includes(':clear')) { stored = stored.slice(0, Number(decodeURIComponent(url).match(/State!A([0-9]+):A/)[1]) - 1); return { ok: true, json: async () => ({}) }; }
     if (init.method === 'PUT') { stored = JSON.parse(init.body).values; return { ok: true, json: async () => ({}) }; }
     return { ok: true, json: async () => ({ values: stored }) };
   };
@@ -156,4 +156,6 @@ test('the outside copy of the state has no positions, and round trips through th
   const big = { ...clean, filler: 'x'.repeat(90000) };
   assert.equal(await sheet.writeState('id', big), 3, 'three chunks of at most 40000');
   assert.deepEqual(await sheet.readState('id'), big);
+  assert.equal(await sheet.writeState('id', clean), 1);
+  assert.deepEqual(await sheet.readState('id'), clean, 'a shorter copy leaves no old rows behind');
 });

@@ -95,6 +95,7 @@ ${ADMIN_LINK(botUsername)}`);
       if (!isGroup) return say(chatId, 'Run /team inside your team group, with this bot added.');
       if (engine.teamByChat(chatId)) return say(chatId, 'This group is already a team.');
       engine.addTeam({ name: arg || m.chat.title || 'Team', telegram: { chatId, coordinatorChatId: null, coordinatorUserId: m.from.id }, discord: discordDefault });
+      engine.changed();
       return say(chatId, `Team set up. Start a run with /run <name>. For private notices, ${m.from.first_name || 'coordinator'} should press Start in a private chat with this bot, then send /coordinator in this group.`);
     }
     const team = engine.teamByChat(chatId);
@@ -108,6 +109,7 @@ ${ADMIN_LINK(botUsername)}`);
       try { await say(m.from.id, 'Private notices are on. Missed check-ins and quiet glasses will be sent here.', { disable_notification: true }); }
       catch { return say(chatId, `I cannot reach you privately yet. Press Start in a private chat with me (https://t.me/${botUsername}), then send /coordinator again. Until then notices stay in this group.`); }
       team.telegram.coordinatorChatId = m.from.id;
+      engine.changed();
       return say(chatId, 'Done. Coordinator notices now go to your private chat. If that ever fails, they come back to this group.', { disable_notification: true });
     }
     if (name === 'run') {
