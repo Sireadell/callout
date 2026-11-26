@@ -85,11 +85,24 @@ export class Engine {
       flags: { low: false, off: false, silent: false }, checkins: 0, missed: 0,
     };
     run.volunteers[v.id] = v;
+    return { volunteer: v, ...this._issue(runId, v.id) };
+  }
+
+  // A fresh code for someone who has not joined yet. Their earlier code stops working.
+  newCodeFor(runId, volunteerId, area) {
+    const run = this._run(runId);
+    const v = run.volunteers[volunteerId];
+    if (!v || v.status !== 'waiting') throw new Error('already joined');
+    if (area) v.area = area;
+    for (const [k, p] of Object.entries(this.pairings)) if (p.volunteerId === volunteerId) delete this.pairings[k];
+    return { volunteer: v, ...this._issue(runId, volunteerId) };
+  }
+  _issue(runId, volunteerId) {
     const code = newCode();
     const expiresAt = this.clock.now() + this.cfg.pairingTtlMs;
-    this.pairings[hashKey(code)] = { runId, volunteerId: v.id, expiresAt, used: false };
+    this.pairings[hashKey(code)] = { runId, volunteerId, expiresAt, used: false };
     this.changed();
-    return { volunteer: v, code, expiresAt };
+    return { code, expiresAt };
   }
 
   // Codes and sign-in keys are only ever stored as hashes.

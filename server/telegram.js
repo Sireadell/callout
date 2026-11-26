@@ -50,6 +50,11 @@ export class Telegram {
   send(chatId, text, extra = {}) {
     return this._queued(chatId, () => this.call('sendMessage', { chat_id: chatId, text: text.slice(0, 4000), ...extra }));
   }
+  // A message only one member of a group sees. Telegram does not promise it arrives, so it is only used
+  // where losing it does no harm: never for check-in, backup or quiet notices.
+  sendOnlyTo(chatId, userId, text) {
+    return this._queued(chatId, () => this.call('sendMessage', { chat_id: chatId, text: text.slice(0, 4000), ephemeral_message_parameters: { receiver_user_id: userId } }));
+  }
   edit(chatId, messageId, text, extra = {}) {
     return this._queued(chatId, () => this.call('editMessageText', { chat_id: chatId, message_id: messageId, text: text.slice(0, 4000), ...extra }));
   }

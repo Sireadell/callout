@@ -55,8 +55,23 @@ export function makeBot({ engine, telegram, router, botUsername = 'callout_bot',
     try { const mem = await telegram.getChatMember?.(chatId, userId); return mem?.status === 'creator' || mem?.status === 'administrator'; } catch { return false; }
   }
 
-  // Pairing codes go to the coordinator's private chat. The group is only the fallback, and is told so.
-  async function sendCodes(team, chatId, text, short) {
+  // Shows a line in the group to one person only. "sent" is false when Telegram refused it, and "hidden"
+  // is true only when Telegram confirms nobody else sees it. Never used for safety notices.
+  async function onlyTo(chatId, userId, text) {
+    if (chatId >= 0 || userId == null || !telegram.sendOnlyTo) return { sent: false, hidden: false };
+    try {
+      const r = await telegram.sendOnlyTo(chatId, userId, text);
+      return { sent: true, hidden: r?.ephemeral_message_id != null };
+    } catch { return { sent: false, hidden: false }; }
+  }
+  async function refuse(chatId, userId) {
+    const text = 'Only the coordinator can do that.';
+    if (!(await onlyTo(chatId, userId, text)).sent) await say(chatId, text, { disable_notification: true });
+  }
+
+  // Pairing codes go to the coordinator's private chat. In the group they are shown only to the person who
+  // asked, when Telegram allows it. A code the whole group can see is the last resort, and is said to be one.
+  async function sendCodes(team, chatId, userId, text, short) {
     const priv = team.telegram.coordinatorChatId;
     if (priv != null && priv !== chatId) {
       try {
@@ -65,9 +80,13 @@ export function makeBot({ engine, telegram, router, botUsername = 'callout_bot',
       } catch { /* cannot reach them: fall back to this chat */ }
     }
     if (chatId === priv) return say(chatId, text);
+    const how = 'To get codes in your private chat, press Start in a private chat with me, then send /coordinator here (the person who set up the team).';
+    const one = await onlyTo(chatId, userId, `${text}\n\nOnly you can see this. Not there? Send the same command again.`);
+    if (one.hidden) return say(chatId, `${short} Shown only to the person who asked. ${how}`, { disable_notification: true });
+    if (one.sent) return say(chatId, `Anyone in this group can see the code above. ${how}`, { disable_notification: true });
     return say(chatId, `${text}
 
-Anyone in this group can see this. To get codes privately, the person who set up the team presses Start in a private chat with me, then sends /coordinator here.`);
+Anyone in this group can see this. ${how}`);
   }
 
   async function onMessage(m) {
@@ -106,10 +125,13 @@ ${ADMIN_LINK(botUsername)}`);
     const team = engine.teamByChat(chatId);
     if (!team) return say(chatId, 'No team yet. Add me to your group and send /team <name>.');
 
-    if (COORD_ONLY.has(name) && !(await isCoord(team, m.from?.id, chatId))) return say(chatId, 'Only the coordinator can do that.', { disable_notification: true });
+    if (COORD_ONLY.has(name) && !(await isCoord(team, m.from?.id, chatId))) return refuse(chatId, m.from?.id);
 
     if (name === 'coordinator') {
-      if (m.from.id !== team.telegram.coordinatorUserId) return say(chatId, 'Only the person who set up the team can do that.');
+      if (m.from.id !== team.telegram.coordinatorUserId) {
+        const text = 'Only the person who set up the team can do that.';
+        return (await onlyTo(chatId, m.from.id, text)).sent || say(chatId, text);
+      }
       // A bot cannot message someone who never pressed Start, so try it now and say what happened.
       try { await say(m.from.id, 'Private notices are on. Missed check-ins and quiet glasses will be sent here.', { disable_notification: true }); }
       catch { return say(chatId, `I cannot reach you privately yet. Press Start in a private chat with me (https://t.me/${botUsername}), then send /coordinator again. Until then notices stay in this group.`); }
@@ -142,8 +164,10 @@ ${AI_NOTICE}` : ''}`);
     if (name === 'add') {
       const [vn, area] = arg.split('|').map((s) => s.trim());
       if (!vn || !area) return say(chatId, 'Use: /add <name> | <area>');
-      const { code } = engine.addVolunteer(run.id, { name: vn, area });
-      return sendCodes(team, chatId, `${vn} (${area}): enter this code in the glasses app within 15 minutes, once only:\n${code}\n\nOptional: ${vn} can open https://t.me/${botUsername}?start=${code} to get private messages from me. Give it to ${vn} only.`, `Added ${vn} (${area}). The code is private.`);
+      // Someone added but not joined yet gets a fresh code instead of a second place on the list.
+      const waiting = Object.values(run.volunteers).find((x) => x.status === 'waiting' && x.name.toLowerCase() === vn.toLowerCase());
+      const { code } = waiting ? engine.newCodeFor(run.id, waiting.id, area) : engine.addVolunteer(run.id, { name: vn, area });
+      return sendCodes(team, chatId, m.from?.id, `${vn} (${area}): enter this code in the glasses app within 15 minutes, once only:\n${code}\n\nOptional: ${vn} can open https://t.me/${botUsername}?start=${code} to get private messages from me. Give it to ${vn} only.`, `Added ${vn} (${area}). The code is private.`);
     }
     if (name === 'status') return say(chatId, boardText(engine, run.id));
     if (name === 'interval') {
@@ -184,7 +208,7 @@ ${AI_NOTICE}` : ''}`);
       if (!fresh.length) return say(chatId, 'Everyone in the sheet is already in this run.');
       const lines = fresh.map(({ name: n, area }) => `${n} (${area}): ${engine.addVolunteer(run.id, { name: n, area }).code}`);
       const added = `Added ${fresh.length}${skipped ? `, ${skipped} already in the run` : ''}.`;
-      return sendCodes(team, chatId, `${added} Each person enters their code in the glasses app within 15 minutes, once only:\n${lines.join('\n')}`, added);
+      return sendCodes(team, chatId, m.from?.id, `${added} Each person enters their code in the glasses app within 15 minutes, once only:\n${lines.join('\n')}`, added);
     }
     if (name === 'end') {
       const debrief = engine.endRun(run.id);
@@ -267,7 +291,10 @@ ${AI_NOTICE}` : ''}`);
   // or a short reply when reactions are not allowed in this chat.
   async function ack(m, v) {
     try { await telegram.setReaction(m.chat.id, m.message_id, '👌'); }
-    catch { await say(m.chat.id, `Sent to ${v.name}'s lens.`, { reply_to_message_id: m.message_id, disable_notification: true }); }
+    catch {
+      const text = `Sent to ${v.name}'s lens.`;
+      if (!(await onlyTo(m.chat.id, m.from?.id, text)).sent) await say(m.chat.id, text, { reply_to_message_id: m.message_id, disable_notification: true });
+    }
   }
 
   // A coordinator reacts to a clue or notice: thumbs up reads "Seen" on the lens, OK hand reads "OK", heart "Thanks".

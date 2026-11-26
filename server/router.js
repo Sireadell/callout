@@ -40,11 +40,11 @@ export function boardText(engine, runId) {
 
 export function makeRouter({ engine, telegram = null, discord = null, log = console.error }) {
   const keyboardFor = (n) => {
-    if (n.kind === 'nudge_overdue') return { inline_keyboard: [[{ text: 'Check in', callback_data: `ci|${n.volunteerId}` }]] };
+    if (n.kind === 'nudge_overdue') return { inline_keyboard: [[{ text: 'Check in', style: 'primary', callback_data: `ci|${n.volunteerId}` }]] };
     if (['clue', 'answer', 'missed_checkin', 'went_silent', 'need_backup', 'missed_checkin_team'].includes(n.kind)) {
       const rows = PRESETS.map((p, i) => [{ text: p, callback_data: `r|${n.volunteerId}|${i}` }]);
       if (['clue', 'answer', 'need_backup'].includes(n.kind)) rows.push([{ text: 'Ask a question', callback_data: `a|${n.volunteerId}` }]);
-      else rows.push([{ text: 'Reached them, mark OK', callback_data: `ok|${n.volunteerId}` }]);
+      else rows.push([{ text: 'Reached them, mark OK', style: 'success', callback_data: `ok|${n.volunteerId}` }]);
       return { inline_keyboard: rows };
     }
     return undefined;
