@@ -20,6 +20,9 @@ test('only correctly signed interactions pass', () => {
   assert.ok(!verifyInteraction('nothex', k.sign('x'), '1', 'x'));
 });
 
+const SAM = '100000000000000001';
+const PAT = '200000000000000002';
+
 function world() {
   const engine = new Engine({ clock: { now: () => 1_000_000 } });
   const team = engine.addTeam({ name: 'T', discord: { webhookUrl: 'https://hook', channelId: 'C1' } });
@@ -29,19 +32,20 @@ function world() {
 }
 
 test('a button press sends the preset to the lens and answers privately', () => {
-  const w = world(); const h = makeInteractionHandler({ engine: w.engine, presets: PRESETS });
+  const w = world(); const h = makeInteractionHandler({ engine: w.engine, presets: PRESETS, coordinatorIds: SAM });
   assert.deepEqual(h({ type: 1 }), { type: 1 });
-  const out = h({ type: 3, channel_id: 'C1', data: { custom_id: `r|${w.volunteer.id}|1` }, member: { user: { username: 'sam' } } });
+  const out = h({ type: 3, channel_id: 'C1', data: { custom_id: `r|${w.volunteer.id}|1` }, member: { user: { id: SAM, username: 'sam' } } });
   assert.equal(out.data.flags, 64);
   assert.equal(w.engine.sync(w.token).replies[0].text, PRESETS[1]);
 });
 
 test('a button from another channel or an ended run is refused', () => {
-  const w = world(); const h = makeInteractionHandler({ engine: w.engine, presets: PRESETS });
-  assert.equal(h({ type: 3, channel_id: 'OTHER', data: { custom_id: `r|${w.volunteer.id}|0` } }).data.content, 'Not available');
-  assert.equal(h({ type: 3, channel_id: 'C1', data: { custom_id: 'r|nobody|0' } }).data.content, 'Not available');
+  const w = world(); const h = makeInteractionHandler({ engine: w.engine, presets: PRESETS, coordinatorIds: SAM });
+  const member = { user: { id: SAM } };
+  assert.equal(h({ type: 3, channel_id: 'OTHER', member, data: { custom_id: `r|${w.volunteer.id}|0` } }).data.content, 'Not available');
+  assert.equal(h({ type: 3, channel_id: 'C1', member, data: { custom_id: 'r|nobody|0' } }).data.content, 'Not available');
   w.engine.endRun(w.run.id);
-  assert.equal(h({ type: 3, channel_id: 'C1', data: { custom_id: `r|${w.volunteer.id}|0` } }).data.content, 'Not available');
+  assert.equal(h({ type: 3, channel_id: 'C1', member, data: { custom_id: `r|${w.volunteer.id}|0` } }).data.content, 'Not available');
 });
 
 test('clue notices go with buttons through the bot; others use the webhook', async () => {
@@ -57,4 +61,28 @@ test('clue notices go with buttons through the bot; others use the webhook', asy
   assert.match(calls[1][0], /^https:\/\/hook/);
   assert.equal(calls[1][1].components, undefined);
   assert.deepEqual(calls[1][1].allowed_mentions, { parse: [] });
+});
+
+test('only a listed coordinator can send a reply; anyone else is refused privately', () => {
+  const w = world();
+  const h = makeInteractionHandler({ engine: w.engine, presets: PRESETS, coordinatorIds: ` 300000000000000003, ${SAM} ` });
+  const press = (id) => h({ type: 3, channel_id: 'C1', data: { custom_id: `r|${w.volunteer.id}|0` }, member: { user: { id, username: 'x' } } });
+  const refused = press(PAT);
+  assert.equal(refused.data.flags, 64);
+  assert.match(refused.data.content, new RegExp(`^Only the coordinator can do that\. Your Discord user ID is ${PAT}\.$`));
+  assert.equal(w.engine.sync(w.token).replies.length, 0);
+  assert.equal(press(undefined).data.content, 'Only the coordinator can do that.');
+  assert.equal(press(SAM).data.content, 'Sent to Ana');
+  assert.equal(w.engine.sync(w.token).replies[0].text, PRESETS[0]);
+});
+
+test('with no coordinator list nobody can send, and the list is read from the setting', () => {
+  const w = world();
+  const press = (h) => h({ type: 3, channel_id: 'C1', data: { custom_id: `r|${w.volunteer.id}|0` }, member: { user: { id: SAM } } }).data.content;
+  for (const none of ['', '  ', 'sam', undefined]) assert.match(press(makeInteractionHandler({ engine: w.engine, presets: PRESETS, coordinatorIds: none ?? '' })), /Only the coordinator/);
+  assert.equal(w.engine.sync(w.token).replies.length, 0);
+  const before = process.env.DISCORD_COORDINATOR_IDS;
+  process.env.DISCORD_COORDINATOR_IDS = SAM;
+  try { assert.equal(press(makeInteractionHandler({ engine: w.engine, presets: PRESETS })), 'Sent to Ana'); }
+  finally { if (before === undefined) delete process.env.DISCORD_COORDINATOR_IDS; else process.env.DISCORD_COORDINATOR_IDS = before; }
 });

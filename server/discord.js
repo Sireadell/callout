@@ -42,8 +42,13 @@ export class Discord {
   }
 }
 
+// Discord user ids allowed to press reply buttons, from a comma or space separated setting.
+export const parseIds = (s) => new Set(String(s || '').split(/[\s,]+/).filter((x) => /^\d{5,25}$/.test(x)));
+
 // Answers Discord's check (type 1) and button presses (type 3). Replies to the clicker are private to them.
-export function makeInteractionHandler({ engine, presets }) {
+// Only the ids in DISCORD_COORDINATOR_IDS can send a reply. With none set, nobody can.
+export function makeInteractionHandler({ engine, presets, coordinatorIds = process.env.DISCORD_COORDINATOR_IDS }) {
+  const allowed = parseIds(coordinatorIds);
   const priv = (content) => ({ type: 4, data: { content, flags: 64, allowed_mentions: { parse: [] } } });
   return function handle(i) {
     if (i.type === 1) return { type: 1 };
@@ -53,7 +58,11 @@ export function makeInteractionHandler({ engine, presets }) {
       const { run, v } = engine.findVolunteer(volId);
       const team = engine.teams[run.teamId];
       if (kind !== 'r' || !presets[Number(idx)] || run.status !== 'active' || !team.discord?.channelId || team.discord.channelId !== i.channel_id) return priv('Not available');
-      engine.reply(run.id, { volunteerId: v.id, text: presets[Number(idx)], by: i.member?.user?.global_name || i.member?.user?.username || 'coordinator' });
+      const user = i.member?.user || i.user;
+      if (!allowed.has(String(user?.id || ''))) {
+        return priv(`Only the coordinator can do that.${/^\d+$/.test(user?.id || '') ? ` Your Discord user ID is ${user.id}.` : ''}`);
+      }
+      engine.reply(run.id, { volunteerId: v.id, text: presets[Number(idx)], by: user.global_name || user.username || 'coordinator' });
       return priv(`Sent to ${v.name}`);
     } catch { return priv('Not available'); }
   };
