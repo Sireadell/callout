@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Callout dev panel</title>
+<style>
+body{font:14px system-ui;margin:0;background:#f4f4f2;color:#111}
+header{background:#111;color:#ffd400;padding:10px 16px;font-weight:700}
+header small{display:block;color:#ddd;font-weight:400}
+main{display:grid;grid-template-columns:600px minmax(280px,1fr);gap:16px;padding:16px}
+@media(max-width:940px){main{grid-template-columns:1fr}}
+#lens{width:576px;max-width:100%;height:288px;box-sizing:border-box;background:#000;color:#4cff7a;font:20px/26px ui-monospace,Consolas,monospace;padding:8px 12px;overflow:hidden;white-space:pre-wrap;margin:0}
+fieldset{border:1px solid #bbb;margin:10px 0 0;padding:8px}
+button{font:inherit;padding:6px 10px;margin:3px 4px 3px 0;cursor:pointer}
+#chat div.msg{background:#fff;border:1px solid #ccc;padding:8px;margin:0 0 8px;white-space:pre-wrap}
+#chat small{color:#555}#err{color:#b00020}
+</style></head><body>
+<header>DEV PANEL: fake glasses input, fake Telegram
+<small>The glasses app and server code are real and run on this computer. This is not real glasses and not real Telegram.</small></header>
+<main>
+<section>
+<pre id="lens"></pre>
+<small id="status"></small> <small id="err"></small>
+<fieldset><legend>Ring and menu</legend><button data-a="tap">Tap</button><button data-a="swipe">Swipe</button><span id="menu"></span></fieldset>
+<fieldset><legend>Glasses (fake)</legend><button data-a="battery10">Battery 10%</button><button data-a="batteryCharge">Battery 80% on charge</button><button data-a="off">Glasses off</button><button data-a="on">Glasses back on</button></fieldset>
+<fieldset><legend>Motion (fake)</legend><button data-a="still">No movement for 5 min</button><button data-a="move">Head moves, lens clock back to now</button></fieldset>
+<fieldset><legend>Phone (fake)</legend><button data-a="signalOff">Lose signal</button><button data-a="signalOn">Signal returns</button><button data-a="posA">Position A</button><button data-a="posB">Position B</button><button data-a="posNone">No position</button></fieldset>
+<fieldset><legend>Team</legend><button data-a="ben">Add a second volunteer (no lens)</button><button data-a="end">/end clear</button><a id="mini" target="_blank" rel="noopener">Open the coordinator dashboard (fake sign-in)</a></fieldset>
+</section>
+<section><h3>What the fake Telegram received</h3><div id="chat"></div></section>
+</main>
+<script>
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function act(body) {
+  const r = await fetch('/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json(); document.getElementById('err').textContent = r.ok ? '' : j.error; refresh();
+}
+let last = '';
+async function refresh() {
+  const s = await (await fetch('/state')).json();
+  document.getElementById('lens').textContent = s.list ? s.list.map((x, i) => `${i + 1}  ${x}`).join('\n') : s.text;
+  document.getElementById('status').textContent = `Signal ${s.signal ? 'on' : 'LOST'} | Microphone ${s.mic ? 'open' : 'closed'} | Position ${s.position ? `${s.position.lat}, ${s.position.lng}` : 'none'} | Lens clock moved ${Math.round(s.clockOffsetMs / 60000)} min${s.exited ? ' | App closed' : ''}`;
+  document.getElementById('mini').href = s.miniApp;
+  const key = JSON.stringify([s.menu, s.list, s.chat]);
+  if (key === last) return;
+  last = key;
+  document.getElementById('menu').innerHTML = (s.list ? s.list.map((x, i) => `<button data-a="list" data-i="${i}">Pick: ${esc(x)}</button>`) : []).concat(s.menu.map((m) => `<button data-a="menu" data-i="${m.itemID}">Menu: ${esc(m.itemName)}</button>`)).join('');
+  document.getElementById('chat').innerHTML = s.chat.map((m) => `<div class="msg"><small>${esc(m.time)} ${esc(m.chat)} | ${esc(m.method)}${m.loud ? ' | loud' : ''}</small><br>${esc(m.text)}${m.buttons.length ? '<br>' + m.buttons.map((b) => `<button data-a="press" data-i="${m.messageId}" data-d="${esc(b.data)}">${esc(b.text)}</button>`).join('') : ''}</div>`).join('');
+}
+document.addEventListener('click', (e) => { const b = e.target.closest('button[data-a]'); if (b) act({ name: b.dataset.a, index: Number(b.dataset.i), data: b.dataset.d }); });
+refresh(); setInterval(refresh, 1000);
+</script></body></html>
