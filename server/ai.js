@@ -1,7 +1,7 @@
 // Short summaries. Server side only, so no key ever reaches the glasses app.
 // Works without any key: it falls back to plain trimming, so the lens never waits on the network.
 const SYSTEM_LINE = 'Rewrite the message as one plain line of at most 60 characters for a small glasses display. Keep names, places and numbers. No quotes, no emoji. Reply with the line only.';
-const SYSTEM_DEBRIEF = 'Summarise a volunteer search run in at most 3 short plain sentences from the facts given. State only what the facts say. Do not guess, diagnose or give advice. Reply with the sentences only.';
+const SYSTEM_DEBRIEF = 'Summarise a field team check-in run in at most 3 short plain sentences from the facts given. Call it a run, never a search or a rescue. State only what the facts say. Do not guess, diagnose or give advice. Reply with the sentences only.';
 
 const SYSTEM_ANSWERS = 'A team coordinator asks a field volunteer a question. Give 3 short answers the volunteer could send, one per line, each at most 16 characters. Plain words, no numbering, no emoji, no medical or emergency wording. Reply with the lines only.';
 const SYSTEM_DRAFTS = 'A field volunteer sent a short report to the team coordinator. Suggest 2 short replies the coordinator could send back, one per line, each at most 40 characters. Plain words: an acknowledgement or a practical next step or question. No promises about help arriving, no medical or emergency wording, no emoji, no numbering. Reply with the lines only.';
