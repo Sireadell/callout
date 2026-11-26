@@ -161,7 +161,7 @@ export class Engine {
 
   checkIn(token, { pos, at } = {}) {
     const { run, v } = this._auth(token);
-    this._touch(v, pos);
+    this._touch(run, v, pos);
     const prevStep = v.step;
     v.lastCheckin = this._when(v, at);
     v.step = 0;
@@ -178,9 +178,7 @@ export class Engine {
   heartbeat(token, { battery, charging, inCase, worn, still, pos, app, reason } = {}) {
     const { run, v } = this._auth(token);
     if (app === 'closed') return this._appClosed(run, v, reason);
-    const wasSilent = v.flags.silent || v.closed?.told;
-    this._touch(v, pos);
-    if (wasSilent) this._emit(run, 'coordinator', 'back_online', `${v.name} (${v.area}) is back online.`, { volunteerId: v.id });
+    this._touch(run, v, pos);
     if (typeof battery === 'number') {
       v.battery = battery;
       const low = battery <= this.cfg.lowBatteryPct && !charging;
@@ -218,7 +216,7 @@ export class Engine {
 
   clue(token, { text, pos, photoId = null, at = undefined }) {
     const { run, v } = this._auth(token);
-    this._touch(v, pos);
+    this._touch(run, v, pos);
     const madeAt = this._when({ lastCheckin: 0 }, at);
     const lateMin = mins(this.clock.now() - madeAt);
     const clue = { id: newId('clue'), volunteerId: v.id, text: String(text || '').slice(0, 500), pos: v.pos, photoId, at: madeAt };
@@ -232,7 +230,7 @@ export class Engine {
   // A photo for a clue already sent. The picture is passed straight to the chat apps and never kept here.
   attachPhoto(token, { clueId, bytes }) {
     const { run, v } = this._auth(token);
-    this._touch(v);
+    this._touch(run, v);
     const clue = run.clues.find((c) => c.id === clueId && c.volunteerId === v.id);
     if (!clue) throw new Error('unknown clue');
     if (!bytes?.length || bytes.length > 600 * 1024) throw new Error('photo too large');
@@ -244,7 +242,7 @@ export class Engine {
   }
 
   // Checks a sign-in key and counts as contact, without handing out any waiting reply.
-  touch(token, pos) { const found = this._auth(token); this._touch(found.v, pos); return found; }
+  touch(token, pos) { const found = this._auth(token); this._touch(found.run, found.v, pos); return found; }
 
   // ---------- telling a waiting lens ----------
   // Called when something this volunteer's lens shows has changed. The long poll replaces it.
@@ -265,7 +263,7 @@ export class Engine {
   // peek: hand out no replies. contact: false when the contact was already counted (a held request ending).
   sync(token, { pos, peek = false, contact = true } = {}) {
     const { run, v } = this._auth(token);
-    if (contact) this._touch(v, pos);
+    if (contact) this._touch(run, v, pos);
     const now = this.clock.now();
     const replies = peek ? [] : run.replies.filter((r) => r.volunteerId === v.id && !r.delivered);
     for (const r of replies) {
@@ -303,7 +301,7 @@ export class Engine {
   // A team request from the lens menu. Worded as a request to the team, never as an alarm.
   needBackup(token, { pos } = {}) {
     const { run, v } = this._auth(token);
-    this._touch(v, pos);
+    this._touch(run, v, pos);
     this._emit(run, 'team', 'need_backup', `${v.name} (${v.area}) asked the team for backup. Last position: ${place(v.pos)}. ${TEAM_ONLY}`, { volunteerId: v.id, pos: v.pos, clueText: `${v.name} asked the team for backup`, who: `${v.name} (${v.area}), team notice only` });
   }
 
@@ -362,7 +360,7 @@ export class Engine {
   // A tapped or spoken answer. It goes back to whoever asked, as a reply to the question. It is not a check-in.
   answer(token, { questionId, answer, at } = {}) {
     const { run, v } = this._auth(token);
-    this._touch(v);
+    this._touch(run, v);
     const q = v.question;
     if (!q || q.id !== questionId) throw new Error('unknown question');
     if (q.answeredAt) return; // a second send changes nothing
@@ -535,7 +533,9 @@ export class Engine {
     if (run.status !== 'active') throw new Error('run ended');
     return { run, v: run.volunteers[ref.volunteerId] };
   }
-  _touch(v, pos) {
+  // Any contact from the glasses app. If the coordinator was told it was gone, they are told it is back.
+  _touch(run, v, pos) {
+    if (v.flags.silent || v.closed?.told) this._emit(run, 'coordinator', 'back_online', `${v.name} (${v.area}) is back online.`, { volunteerId: v.id });
     v.lastSeen = this.clock.now();
     v.flags.silent = false;
     v.closed = null;

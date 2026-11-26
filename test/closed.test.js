@@ -61,3 +61,14 @@ test('the status page shows parts and counts, and no names, ids, keys or positio
   assert.equal(page.timings.clueToChat.samples, 1);
   assert.doesNotMatch(JSON.stringify(page), /Ana|Wardens|Person|secret-key|-500|51[.]5/);
 });
+
+test('"back online" is sent whichever call arrives first after a quiet spell', async () => {
+  for (const first of ['sync', 'checkIn', 'heartbeat', 'clue']) {
+    const s = setup();
+    const { token } = await start(s);
+    s.clock.advance(3 * MIN); s.engine.tick();
+    s.engine[first](token, { text: 'x' });
+    s.engine.sync(token); s.engine.heartbeat(token, {}); await settle();
+    assert.equal(said(s.tg, /is back online/).length, 1, first);
+  }
+});
