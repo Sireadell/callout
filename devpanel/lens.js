@@ -16,17 +16,22 @@ export async function startLens({ server }) {
   let onEvent = () => {};
   let onStatus = () => {};
 
+  // A page is some text boxes, a list, or both. Boxes are shown top to bottom in the order given.
+  let parts = new Map();
+  const redraw = () => { lens.text = [...parts.values()].filter((t) => String(t).trim()).join('\n'); };
   const show = (page) => {
     if (page.menuObject) lens.menu = page.menuObject.menuItems;
-    if (page.listObject?.length) lens.list = page.listObject[0].itemContainer.itemName;
-    else if (page.textObject?.length) { lens.list = null; lens.parts = new Map(page.textObject.map((t) => [t.containerID, t.content])); lens.text = [...lens.parts.values()].join('\n'); }
+    lens.list = page.listObject?.[0]?.itemContainer.itemName || null;
+    parts = new Map((page.textObject || []).map((t) => [t.containerID, t.content]));
+    redraw();
   };
-  globalThis.__devpanelBridge = {
+  const bridge = {
     createStartUpPageContainer: async (page) => { show(page); return 0; },
     rebuildPageContainer: async (page) => { show(page); return true; },
-    textContainerUpgrade: async ({ containerID, content }) => { (lens.parts ||= new Map()).set(containerID, content); lens.text = [...lens.parts.values()].join('\n'); return true; },
+    textContainerUpgrade: async ({ containerID, content }) => { if (!parts.has(containerID)) return false; parts.set(containerID, content); redraw(); return true; },
     onEvenHubEvent: (cb) => { onEvent = cb; return () => {}; },
     onDeviceStatusChanged: (cb) => { onStatus = cb; return () => {}; },
+    onLaunchSource: (cb) => { cb('appMenu'); return () => {}; },
     audioControl: async (on) => { lens.mic = on; return true; },
     imuControl: async () => true,
     getLocalStorage: async (k) => store.get(k) || '',
@@ -36,6 +41,14 @@ export async function startLens({ server }) {
     pickImageFromAlbum: async () => null,
     shutDownPageContainer: async () => { lens.exited = true; return true; },
   };
+  // A bridge call this file does not know yet does nothing, and says so, instead of stopping the app.
+  globalThis.__devpanelBridge = new Proxy(bridge, {
+    get(target, name) {
+      if (name in target || typeof name !== 'string' || name === 'then') return target[name];
+      console.warn(`dev panel: the fake glasses do not know "${name}" yet`);
+      return name.startsWith('on') ? () => () => {} : async () => undefined;
+    },
+  });
 
   // "No signal": the app's calls to the server fail the way a dead connection fails.
   const realFetch = globalThis.fetch;
@@ -67,6 +80,9 @@ export async function startLens({ server }) {
     pair: (code) => globalThis.callout.pair(code),
     tap: () => onEvent({ sysEvent: {} }),
     swipe: () => onEvent({ sysEvent: { eventType: 1 } }),
+    // Long press and let go. An app that does not use them ignores both.
+    hold: () => onEvent({ sysEvent: { eventType: 9 } }),
+    release: () => onEvent({ sysEvent: { eventType: 10 } }),
     // Picks a menu line by its words, so a renumbered menu still works.
     chooseMenu(words) {
       const item = lens.menu.find((m) => words.test(m.itemName));
@@ -80,7 +96,7 @@ export async function startLens({ server }) {
     setDevice(patch) { Object.assign(lens.device, patch); onStatus({ ...lens.device }); },
     // Head movement samples as the glasses would send them.
     move() { sample(0); sample(1); },
-    noMovementFor(minutes) { sample(1); lens.clockOffsetMs += minutes * 60_000 + 1000; sample(1); },
+    noMovementFor(minutes) { sample(1); lens.clockOffsetMs += minutes * 60_000 + 1000; sample(1); globalThis.callout.sync(); }, // sync at once, or the moved clock looks like lost signal
     // Puts the lens clock back to now and counts as movement.
     resetClock() { lens.clockOffsetMs = 0; sample(0); sample(1); },
   });

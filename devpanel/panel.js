@@ -13,6 +13,8 @@ let ben = false;
 const actions = {
   tap: () => lens.tap(),
   swipe: () => lens.swipe(),
+  hold: () => lens.hold(),
+  release: () => lens.release(),
   menu: ({ index }) => { const m = lens.menu.find((x) => x.itemID === index); if (m) lens.chooseMenu(new RegExp(`^${m.itemName.replace(/[^\w ]/g, '.')}$`)); },
   list: ({ index }) => lens.chooseList(index),
   press: ({ index, data }) => rig.press(index, String(data)),

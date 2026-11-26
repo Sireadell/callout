@@ -8,7 +8,7 @@ const out = [];
 const log = (line = '') => { out.push(line); console.log(line); };
 let failed = 0;
 const check = (label, ok) => { log(`${ok ? 'PASS' : 'FAIL'}  ${label}`); if (!ok) failed++; };
-const lensShot = (lens, label) => log(`\n  [lens: ${label}]\n${(lens.list ? lens.list.map((x) => `- ${x}`).join('\n') : lens.text).replace(/^/gm, '  | ')}\n`);
+const lensShot = (lens, label) => log(`\n  [lens: ${label}]\n${[lens.text, ...(lens.list || []).map((x) => `- ${x}`)].filter(Boolean).join('\n').replace(/^/gm, '  | ')}\n`);
 
 log('DEV PANEL PROOF. Fake glasses input and fake Telegram. Not real glasses, not real Telegram.\n');
 const rig = await startRig({ onServerLine: () => {} });
@@ -60,7 +60,7 @@ try {
   lens.setDevice({ isWearing: true });
 
   log('\n--- S21: no signal, then signal returns ---');
-  await lensSays(/Tap = check in|Reply:|Team /);
+  await lensSays(/Next check-in/);
   from = sent.length;
   lens.signal = false;
   lens.clockOffsetMs = -3 * 60_000; // the clue is made "3 minutes ago"
@@ -70,7 +70,7 @@ try {
   await lens.chooseList(0);
   check('with no signal the clue is kept on the phone', Boolean(await lensSays(/saved\. Sends when signal returns/i)));
   await lens.chooseMenu(/^check in/i);
-  check('with no signal the check-in is kept too', Boolean(await lensSays(/2 waiting to send/)));
+  check('with no signal the check-in is kept too', Boolean(await lensSays(/2 waiting/)));
   lens.clockOffsetMs = 0;
   await new Promise((r) => setTimeout(r, 1200)); // let the lens redraw
   lensShot(lens, 'two items waiting');
@@ -80,7 +80,7 @@ try {
   const late = await until(() => sent.slice(from).find((m) => m.method === 'sendVenue' && m.body.title === held));
   if (late) log(`  [chat group] map pin "${late.body.title}" (${late.body.address})`);
   check('signal back: the kept clue is sent and marked as sent late', /sent \d+ min late/.test(late?.body.address || ''));
-  check('signal back: the queue empties', Boolean(await until(() => !/waiting to send/.test(lens.text), { ms: 15_000 })));
+  check('signal back: the queue empties', Boolean(await until(() => !/\d waiting/.test(lens.text), { ms: 15_000 })));
   // Reported, not counted: the server only says "back online" when a 30 second heartbeat is the first
   // call to arrive. A sync or a held item that arrives first clears the quiet flag without a notice.
   const online = await seen(/back online/, from, 3000);

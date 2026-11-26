@@ -19,7 +19,7 @@ button{font:inherit;padding:6px 10px;margin:3px 4px 3px 0;cursor:pointer}
 <section>
 <pre id="lens"></pre>
 <small id="status"></small> <small id="err"></small>
-<fieldset><legend>Ring and menu</legend><button data-a="tap">Tap</button><button data-a="swipe">Swipe</button><span id="menu"></span></fieldset>
+<fieldset><legend>Ring and menu</legend><button data-a="tap">Tap</button><button data-a="swipe">Swipe</button><button data-a="hold">Long press</button><button data-a="release">Let go</button><span id="menu"></span></fieldset>
 <fieldset><legend>Glasses (fake)</legend><button data-a="battery10">Battery 10%</button><button data-a="batteryCharge">Battery 80% on charge</button><button data-a="off">Glasses off</button><button data-a="on">Glasses back on</button></fieldset>
 <fieldset><legend>Motion (fake)</legend><button data-a="still">No movement for 5 min</button><button data-a="move">Head moves, lens clock back to now</button></fieldset>
 <fieldset><legend>Phone (fake)</legend><button data-a="signalOff">Lose signal</button><button data-a="signalOn">Signal returns</button><button data-a="posA">Position A</button><button data-a="posB">Position B</button><button data-a="posNone">No position</button></fieldset>
@@ -36,7 +36,7 @@ async function act(body) {
 let last = '';
 async function refresh() {
   const s = await (await fetch('/state')).json();
-  document.getElementById('lens').textContent = s.list ? s.list.map((x, i) => `${i + 1}  ${x}`).join('\n') : s.text;
+  document.getElementById('lens').textContent = [s.text, ...(s.list || []).map((x, i) => `${i + 1}  ${x}`)].filter(Boolean).join('\n');
   document.getElementById('status').textContent = `Signal ${s.signal ? 'on' : 'LOST'} | Microphone ${s.mic ? 'open' : 'closed'} | Position ${s.position ? `${s.position.lat}, ${s.position.lng}` : 'none'} | Lens clock moved ${Math.round(s.clockOffsetMs / 60000)} min${s.exited ? ' | App closed' : ''}`;
   document.getElementById('mini').href = s.miniApp;
   const key = JSON.stringify([s.menu, s.list, s.chat]);
