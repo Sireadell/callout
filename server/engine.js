@@ -172,6 +172,9 @@ export class Engine {
     return { photoId: clue.photoId };
   }
 
+  // Checks a sign-in key and counts as contact, without handing out any waiting reply.
+  touch(token) { const { v } = this._auth(token); this._touch(v); }
+
   // What the lens shows. Counts as contact from the glasses app.
   sync(token, { pos } = {}) {
     const { run, v } = this._auth(token);
