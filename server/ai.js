@@ -44,6 +44,7 @@ export function debriefFacts(d) {
   const checkins = d.volunteers.reduce((n, v) => n + v.checkins, 0);
   const missed = d.volunteers.reduce((n, v) => n + v.missedNotices, 0);
   lines.push(`Check-ins: ${checkins}. Missed-check-in notices: ${missed}.`);
+  if (d.areasWithoutCheckin?.length) lines.push(`Areas with no check-in: ${d.areasWithoutCheckin.length}.`);
   lines.push(`Clues (${d.clues.length}):`);
   d.clues.slice(0, 40).forEach((c, i) => lines.push(`${i + 1}. ${c.text}`));
   return lines.join('\n');

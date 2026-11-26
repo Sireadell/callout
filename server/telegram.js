@@ -55,6 +55,9 @@ export class Telegram {
   sendOnlyTo(chatId, userId, text) {
     return this._queued(chatId, () => this.call('sendMessage', { chat_id: chatId, text: text.slice(0, 4000), ephemeral_message_parameters: { receiver_user_id: userId } }));
   }
+  sendRich(chatId, blocks, extra = {}) {
+    return this._queued(chatId, () => this.call('sendRichMessage', { chat_id: chatId, rich_message: { blocks }, ...extra }));
+  }
   edit(chatId, messageId, text, extra = {}) {
     return this._queued(chatId, () => this.call('editMessageText', { chat_id: chatId, message_id: messageId, text: text.slice(0, 4000), ...extra }));
   }

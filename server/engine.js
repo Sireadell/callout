@@ -447,8 +447,15 @@ export class Engine {
       })),
       clues: run.clues.map((c) => ({ by: run.volunteers[c.volunteerId].name, text: c.text, pos: c.pos, at: c.at })),
     };
+    // Areas where nobody on the list checked in at all. A count of what was recorded, nothing more.
+    const reached = new Set(debrief.volunteers.filter((v) => v.checkins > 0).map((v) => v.area));
+    debrief.areasWithoutCheckin = [...new Set(debrief.volunteers.map((v) => v.area))].filter((a) => !reached.has(a));
     run.status = 'ended';
-    this._emit(run, 'team', 'debrief', this.debriefText(debrief));
+    // The notice carries the counts for a table. Trails and positions stay out of it.
+    this._emit(run, 'team', 'debrief', this.debriefText(debrief), {
+      table: { title: `Run "${debrief.run}" finished after ${mins(debrief.endedAt - debrief.startedAt)} min`, clues: debrief.clues.length, areasWithoutCheckin: debrief.areasWithoutCheckin,
+        rows: debrief.volunteers.map((v) => ({ name: v.name, area: v.area, checkins: v.checkins, missed: v.missedNotices, note: [v.markedOk ? `marked OK ${v.markedOk}x` : '', v.signedOut ? 'signed out' : ''].filter(Boolean).join(', ') })) },
+    });
     for (const v of Object.values(run.volunteers)) v.tgChatId = null;
     stripPositions(run);
     for (const keys of [this.tokens, this.pairings]) for (const [k, ref] of Object.entries(keys)) if (ref.runId === run.id) delete keys[k];
@@ -461,6 +468,7 @@ export class Engine {
     const lines = [`Run "${d.run}" finished after ${mins(d.endedAt - d.startedAt)} min.`];
     for (const v of d.volunteers) lines.push(`${v.name} (${v.area}): ${v.checkins} check-ins, ${v.missedNotices} missed notices${v.markedOk ? `, marked OK ${v.markedOk}x` : ''}${v.signedOut ? ', signed out' : ''}.`);
     lines.push(`${d.clues.length} clue(s) reported.`);
+    if (d.areasWithoutCheckin?.length) lines.push(`Areas with no check-in: ${d.areasWithoutCheckin.length} (${d.areasWithoutCheckin.join(', ')}).`);
     return lines.join('\n');
   }
 

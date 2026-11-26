@@ -38,6 +38,19 @@ export function boardText(engine, runId) {
   return `Run: ${run.name}${run.status === 'ended' ? ' (finished)' : ''}\n${rows.join('\n') || 'No volunteers yet.'}\nTeam notices only. Not an emergency service.`;
 }
 
+// The debrief as a Telegram rich message: a heading, a table of counts and two lines under it.
+export function debriefBlocks(table) {
+  const cell = (text, extra = {}) => ({ text: String(text), align: 'left', valign: 'top', ...extra });
+  const notes = table.rows.some((r) => r.note);
+  const head = ['Name', 'Area', 'Check-ins', 'Missed', ...(notes ? ['Note'] : [])];
+  const rows = table.rows.map((r) => [cell(r.name), cell(r.area), cell(r.checkins, { align: 'right' }), cell(r.missed, { align: 'right' }), ...(notes ? [r.note ? cell(r.note) : cell('-')] : [])]);
+  const blocks = [{ type: 'heading', text: table.title, size: 3 }];
+  if (rows.length) blocks.push({ type: 'table', is_bordered: true, is_striped: true, cells: [head.map((h) => cell(h, { is_header: true })), ...rows] });
+  blocks.push({ type: 'paragraph', text: `${table.clues} clue(s) reported.` });
+  if (table.areasWithoutCheckin.length) blocks.push({ type: 'paragraph', text: `Areas with no check-in: ${table.areasWithoutCheckin.length} (${table.areasWithoutCheckin.join(', ')}).` });
+  return blocks;
+}
+
 export function makeRouter({ engine, telegram = null, discord = null, ai = null, log = console.error }) {
   const keyboardFor = (n) => {
     if (n.kind === 'nudge_overdue') return { inline_keyboard: [[{ text: 'Check in', style: 'primary', callback_data: `ci|${n.volunteerId}` }]] };
@@ -107,6 +120,10 @@ export function makeRouter({ engine, telegram = null, discord = null, ai = null,
       if (n.kind === 'clue_photo') {
         const replyTo = run?.clueMsg?.[`${chat}:${n.clueId}`];
         return telegram.sendPhoto(chat, n.photo, n.text, { ...base, ...(replyTo ? { reply_to_message_id: replyTo } : {}) });
+      }
+      if (n.kind === 'debrief' && n.table && telegram.sendRich) {
+        // Plain text if the table is refused.
+        try { return await telegram.sendRich(chat, debriefBlocks(n.table), base); } catch (e) { log('table debrief failed:', e.message); }
       }
       return telegram.send(chat, n.text, base);
     };
