@@ -99,6 +99,7 @@ test('sheet out: makes the tabs, writes plain values, no positions, reuses the t
   assert.ok(appends.every((a) => a.url.includes('valueInputOption=RAW')));
   const sent = appends.map((a) => a.init.body).join('');
   assert.doesNotMatch(sent, /"lat"|trail/);
+  assert.match(appends[0].init.body, /All good[.]/, 'the AI summary has its own column in the Debrief tab');
   assert.equal(g.calls.filter((c) => c.url.includes('oauth2')).length, 1);
 });
 
