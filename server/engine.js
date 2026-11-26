@@ -14,6 +14,8 @@ export const DEFAULTS = Object.freeze({
   trailMax: 500,
 });
 
+export const QUICK_CLUES = Object.freeze(['All done', 'No answer', 'Spoke to them', 'Access blocked']);
+
 const ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789'; // no 0/O/1/I/L
 const newCode = () => Array.from(randomBytes(10), (b) => ALPHABET[b % ALPHABET.length]).join('');
 const newId = (p) => `${p}_${randomBytes(5).toString('hex')}`;
@@ -179,7 +181,10 @@ export class Engine {
   }
 
   // Checks a sign-in key and counts as contact, without handing out any waiting reply.
-  touch(token) { const { v } = this._auth(token); this._touch(v); }
+  touch(token) { const found = this._auth(token); this._touch(found.v); return found; }
+
+  // The one-tap clues on the lens for this run.
+  quickClues(run) { return run.quickClues || [...QUICK_CLUES]; }
 
   // What the lens shows. Counts as contact from the glasses app.
   sync(token, { pos } = {}) {

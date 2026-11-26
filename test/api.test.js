@@ -32,3 +32,13 @@ test('the rate limit log line shows a proxy without printing full addresses', ()
   assert.equal(line, 'rate limit sees 10.20.x; forwarded-for entries: 2, first 203.0.x, same as seen: no');
   assert.doesNotMatch(line, /113\.9|30\.40/);
 });
+
+test('voice returns the words and what they ask for, and sends nothing by itself', async () => {
+  const { engine, run, token, routes } = setup({ CALLOUT_DEV: '1' });
+  const sent = []; engine.notify = (n) => sent.push(n);
+  const r = await routes['POST /api/voice']({ token, devText: 'I need backup' });
+  assert.deepEqual(r, { text: 'I need backup', intent: { type: 'backup' } });
+  await routes['POST /api/voice']({ token, devText: 'OK' });
+  assert.equal(sent.length, 0);
+  assert.equal(Object.values(engine.runs[run.id].volunteers)[0].checkins, 0);
+});

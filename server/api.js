@@ -1,3 +1,5 @@
+import { intentOf } from './intent.js';
+
 // One log line that shows whose address the rate limit counts: the caller's, or a proxy in front of the server.
 // Addresses are cut short so no caller can be identified from the log.
 export function describeCaller(req) {
@@ -19,11 +21,14 @@ export function makeRoutes({ engine, stt, miniapp = null, env = process.env }) {
     'POST /api/backup': (b) => { engine.needBackup(b.token, { pos: b.pos }); return { ok: true }; },
     'POST /api/confirm': (b) => { engine.confirmReply(b.token, b.replyId); return { ok: true }; },
     'POST /api/sync': (b) => engine.sync(b.token, { pos: b.pos }),
-    // Audio from the glasses: base64 of raw 16 kHz 16 bit mono. Returns the words, nothing is stored.
+    // Audio from the glasses: base64 of raw 16 kHz 16 bit mono. Returns the words and what they ask for.
+    // Nothing is stored and nothing is sent from here.
     'POST /api/voice': async (b) => {
-      engine.touch(b.token); // checks the token and leaves waiting replies for the next sync
-      if (!env.ASSEMBLYAI_API_KEY && env.CALLOUT_DEV === '1') return { text: b.devText || 'Person inside' }; // dev stub, labelled in the video
-      return { text: await stt.transcribe(Buffer.from(String(b.audio || ''), 'base64')) };
+      const { run } = engine.touch(b.token); // checks the token and leaves waiting replies for the next sync
+      const text = !env.ASSEMBLYAI_API_KEY && env.CALLOUT_DEV === '1'
+        ? b.devText ?? 'Person inside' // dev stub, labelled in the video
+        : await stt.transcribe(Buffer.from(String(b.audio || ''), 'base64'));
+      return { text, intent: intentOf(text, engine.quickClues(run)) };
     },
     // A photo for a clue already sent: base64 JPEG, passed on to the chat and not kept.
     'POST /api/photo': (b) => engine.attachPhoto(b.token, { clueId: b.clueId, bytes: Buffer.from(String(b.image || ''), 'base64') }),
