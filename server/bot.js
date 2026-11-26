@@ -19,6 +19,9 @@ const HELP = [
   'Team notices only. This is not an emergency service.',
 ].join('\n');
 
+// Said when a run starts on a server with an AI key.
+export const AI_NOTICE = 'AI is on: clue words (volunteer names and positions are not added) are sent to an AI service to write the summary, and long coordinator replies to shorten them.';
+
 // What the bot needs as a group admin, and why.
 const RIGHTS = [
   ['can_pin_messages', 'pin the status board'],
@@ -117,7 +120,9 @@ ${ADMIN_LINK(botUsername)}`);
       const run = engine.startRun({ teamId: team.id, name: arg || 'Run' });
       return say(chatId, `Run "${run.name}" started. Add volunteers with /add <name> | <area>.
 
-Everyone who joins agrees to share their position with this group while the run is active. Positions are deleted when the run ends.`);
+Everyone who joins agrees to share their position with this group while the run is active. Positions are deleted when the run ends.${ai?.enabled ? `
+
+${AI_NOTICE}` : ''}`);
     }
     const run = engine.activeRun(team.id);
     if (!run) return say(chatId, 'No active run. Start one with /run <name>.');

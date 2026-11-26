@@ -427,3 +427,15 @@ test('without a private coordinator chat the code goes to the group with a warni
   await bot.handle(msg('/add Ana | Area A1'));
   assert.ok(tg.out.some((m) => m.chat === -500 && /Anyone in this group can see this/.test(m.text || '')));
 });
+
+test('the run notice says what goes to the AI, only when AI is on', async () => {
+  const off = setup();
+  await off.bot.handle(msg('/team Wardens'));
+  await off.bot.handle(msg('/run Elm Street'));
+  assert.ok(!off.tg.out.some((m) => /AI is on/.test(m.text || '')));
+  const on = setup();
+  const bot = makeBot({ engine: on.engine, telegram: on.tg, router: on.router, ai: { enabled: true } });
+  await bot.handle(msg('/team Wardens', { chat: { id: -501, type: 'supergroup' } }));
+  await bot.handle(msg('/run Elm Street', { chat: { id: -501, type: 'supergroup' } }));
+  assert.ok(on.tg.out.some((m) => m.chat === -501 && /AI is on: clue words/.test(m.text || '')));
+});
