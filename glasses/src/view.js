@@ -61,7 +61,7 @@ function warnings(state, now) {
   if (typeof d.batteryLevel === 'number' && d.batteryLevel <= 15 && !d.isCharging) out.push(`▲ Glasses battery ${d.batteryLevel}%`);
   if (state.sync && now - state.syncedAt > 20000) out.push('○ No signal. Will retry.');
   if (state.queue?.length) out.push(`○ ${state.queue.length} waiting to send`);
-  if (state.question) out.push('○ Question waiting: Menu');
+  if (state.question && !state.answering) out.push('○ Question waiting: Menu');
   return out;
 }
 
