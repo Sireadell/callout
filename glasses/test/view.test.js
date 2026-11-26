@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { glanceView, view, fit, BOXES, COLS, fmtClock, MENU, PRESET_CLUES, confirmScreen, listenScreen, holdScreen, thinkScreen, isOk, okScreen, stillScreen, backupScreen } from '../src/view.js';
+import { glanceView, view, fit, BOXES, COLS, fmtClock, MENU, PRESET_CLUES, quickClues, confirmScreen, listenScreen, holdScreen, thinkScreen, isOk, okScreen, stillScreen, backupScreen } from '../src/view.js';
 
 const all = (v) => Object.values(v).join(' ');
 const glanceText = (state, now) => all(glanceView(state, now));
@@ -126,4 +126,11 @@ test('the first screen matches how the app was opened', () => {
   assert.match(glanceView({ launch: 'glassesMenu' }).main, /Take out your phone/);
   assert.match(glanceView({ launch: 'appMenu' }).main, /Enter your code/);
   assert.match(glanceView({}).main, /Enter your code/);
+});
+
+test("the run's quick clues replace the built in ones, at most 4 of 16 characters", () => {
+  assert.ok(PRESET_CLUES.length <= 4 && PRESET_CLUES.every((c) => c.length <= 16));
+  assert.deepEqual(quickClues(undefined), PRESET_CLUES);
+  assert.deepEqual(quickClues([]), PRESET_CLUES);
+  assert.deepEqual(quickClues(['Gate locked', ' ', 'x'.repeat(30), 'b', 'c', 'd']), ['Gate locked', 'x'.repeat(16), 'b', 'c']);
 });

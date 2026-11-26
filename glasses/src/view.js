@@ -131,8 +131,12 @@ export const SPEAK = 'Speak';
 export const questionText = (q, note) => fit([note || `${String(q.by || '').trim() || 'Coordinator'} asks:`, String(q.text || '')], 3);
 export const questionRows = (q) => [...(q.answers || []).map((a) => String(a).slice(0, 16)).filter(Boolean).slice(0, 3), SPEAK];
 
-// One tap each, no typing. Short so they fit on the lens.
-export const PRESET_CLUES = ['House empty', 'Person inside', 'Road blocked', 'Need boat'];
+// One tap each, no typing. The coordinator sets the run's list; these show until the first sync.
+export const PRESET_CLUES = ['All done', 'No answer', 'Spoke to them', 'Access blocked'];
+export function quickClues(list) {
+  const rows = (Array.isArray(list) ? list : []).map((c) => String(c).trim().slice(0, 16)).filter(Boolean).slice(0, 4);
+  return rows.length ? rows : PRESET_CLUES;
+}
 
 // Hold to talk. The cap stays well under the server's upload limit.
 export const HOLD_MAX_S = 10;

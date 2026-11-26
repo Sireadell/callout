@@ -1,5 +1,5 @@
 import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
-import { view, BOXES, MENU, ANSWER_ITEM, questionText, questionRows, SPEAK, PRESET_CLUES, HOLD_MAX_S, HOLD_MIN_MS, holdScreen, listenScreen, thinkScreen, confirmScreen, isOk, voiceAction, okScreen, stillScreen, backupScreen } from './view.js';
+import { view, BOXES, MENU, ANSWER_ITEM, questionText, questionRows, SPEAK, quickClues, HOLD_MAX_S, HOLD_MIN_MS, holdScreen, listenScreen, thinkScreen, confirmScreen, isOk, voiceAction, okScreen, stillScreen, backupScreen } from './view.js';
 import { makeStillness } from './motion.js';
 
 const SERVER = import.meta.env?.VITE_SERVER_URL || localStorage.getItem('callout.server') || 'http://localhost:8787';
@@ -254,10 +254,12 @@ function cancelClue(msg) {
 async function openPresets() {
   if (!state.token) return flash('Pair first');
   state.mode = 'presets';
+  const rows = quickClues(state.sync?.quickClues);
+  state.shownClues = rows; // a list that changes while this page is open is used next time
   await bridge.rebuildPageContainer({
     containerTotalNum: 1,
     listObject: [{ xPosition: 0, yPosition: 0, width: 576, height: 288, containerID: 4, containerName: 'presets',
-      itemContainer: { itemCount: PRESET_CLUES.length, itemName: PRESET_CLUES }, isEventCapture: 1 }],
+      itemContainer: { itemCount: rows.length, itemName: rows }, isEventCapture: 1 }],
     menuObject: { menuItems: menuItems() },
   });
 }
@@ -462,7 +464,7 @@ function onEvent(e) {
   if (state.mode === 'presets') {
     if (dbl) return closePresets();
     if (click && e.listEvent) {
-      const name = e.listEvent.currentSelectItemName || PRESET_CLUES[e.listEvent.currentSelectItemIndex ?? 0];
+      const name = e.listEvent.currentSelectItemName || state.shownClues[e.listEvent.currentSelectItemIndex ?? 0];
       closePresets().then(() => sendClue(name));
     }
     return;
