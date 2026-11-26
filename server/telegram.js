@@ -37,14 +37,12 @@ export class Telegram {
   // Sends to one chat are queued one after another, with a gap.
   _queued(chatId, fn) {
     const prev = this.chains.get(chatId) || Promise.resolve();
-    const next = prev.catch(() => {}).then(async () => {
-      const out = await fn();
-      // Groups (negative ids) are capped at 20 messages a minute, so leave 3.1 s between sends.
-      await this.sleep(chatId < 0 ? Math.max(this.minGapMs, 3100) : this.minGapMs);
-      return out;
-    });
-    this.chains.set(chatId, next);
-    return next;
+    const sent = prev.then(fn);
+    // The caller gets the answer at once. Only the next send to this chat waits out the gap.
+    // Groups (negative ids) are capped at 20 messages a minute, so leave 3.1 s between sends.
+    const gap = chatId < 0 ? Math.max(this.minGapMs, 3100) : this.minGapMs;
+    this.chains.set(chatId, sent.then(() => this.sleep(gap)).catch(() => {}));
+    return sent;
   }
 
   send(chatId, text, extra = {}) {
