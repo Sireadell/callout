@@ -621,7 +621,7 @@ function onEvent(e) {
   const left = (e.sysEvent || e.textEvent)?.eventSource === EventSourceType.TOUCH_EVENT_FROM_GLASSES_L;
   // The left side hint only shows once the host has said which side a touch came from.
   if ((e.sysEvent || e.textEvent)?.eventSource) state.sides = true;
-  if (e.menuItemClickEvent) { if (state.closed) appOpen(); return onMenu(e.menuItemClickEvent.itemID); }
+  if (e.menuItemClickEvent) { state.menuAt = Date.now(); if (state.closed) appOpen(); return onMenu(e.menuItemClickEvent.itemID); }
   const ev = e.textEvent || e.sysEvent || e.listEvent;
   if (!ev) return;
   // A plain tap arrives with no eventType (click is code 0, which the host leaves out).
@@ -630,6 +630,8 @@ function onEvent(e) {
   const dbl = t === OsEventTypeList.DOUBLE_CLICK_EVENT;
   const swipe = t === OsEventTypeList.SCROLL_TOP_EVENT || t === OsEventTypeList.SCROLL_BOTTOM_EVENT;
   if (t === OsEventTypeList.FOREGROUND_ENTER_EVENT) return appOpen();
+  // Closing the glasses menu sends a foreground exit right after the pick, while the app is still on screen.
+  if (t === OsEventTypeList.FOREGROUND_EXIT_EVENT && Date.now() - (state.menuAt || 0) < 2000) return;
   if (CLOSED[t]) return appClosed(CLOSED[t]);
   if (state.closed) appOpen(); // a gesture means the app is in use again
   if (t === OsEventTypeList.LONG_PRESS_EVENT) return onHold();

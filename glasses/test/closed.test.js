@@ -36,3 +36,24 @@ test('each way of closing has its own reason', async () => {
   await until(() => closed().length === 3);
   assert.deepEqual(closed().slice(1).map((r) => r.body.reason), ['abnormal_exit', 'system_exit']);
 });
+
+test('the exit the menu sends after a pick is not a closed app, and the backup question stays', async () => {
+  app.press(E.FOREGROUND_ENTER_EVENT);
+  await wait(50);
+  const before = closed().length;
+  app.menu(8);
+  app.press(E.FOREGROUND_EXIT_EVENT);
+  await until(() => /Ask the team for backup\?/.test(app.all()), 2000, 'backup question');
+  await wait(300);
+  assert.equal(closed().length, before);
+  assert.match(app.all(), /Ask the team for backup\?/);
+  app.tap();
+  await until(() => app.sent('/api/backup').length === 1, 2000, 'backup sent');
+});
+
+test('a real exit a few seconds after a menu pick still counts', async () => {
+  const before = closed().length;
+  await wait(2100);
+  app.press(E.FOREGROUND_EXIT_EVENT);
+  await until(() => closed().length === before + 1, 2000, 'closed note');
+});
