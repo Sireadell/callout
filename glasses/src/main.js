@@ -25,7 +25,7 @@ async function api(path, body, { signal } = {}) {
 function endedByServer() {
   if (!state.token) return;
   const listUp = onListPage();
-  state.token = null; state.sync = null; state.ended = true; state.mode = 'glance'; state.reply = null; state.question = null; state.answering = null;
+  state.token = null; state.sync = null; state.join = null; state.ended = true; state.mode = 'glance'; state.reply = null; state.question = null; state.answering = null;
   bridge?.setLocalStorage('callout.token', '').catch(() => {});
   if (listUp) bridge.rebuildPageContainer(TEXT_PAGE()).catch(() => {}); else paint();
 }
@@ -419,9 +419,53 @@ async function pair(code) {
   });
   if (!r.ok) throw new Error('bad code');
   const j = await r.json();
-  state.token = j.token; state.ended = false; long.rev = -1;
-  await bridge.setLocalStorage('callout.token', j.token); phoneStatus();
+  await adopt(j.token);
+}
+async function adopt(token) {
+  state.token = token; state.ended = false; state.join = null; join.id += 1; long.rev = -1;
+  await bridge.setLocalStorage('callout.token', token); phoneStatus();
   await sync(); await heartbeat();
+}
+
+// ---- join from the lens: show a 4 digit code, wait for the team group to claim it ----
+const JOIN_POLL_MS = 3000;
+const join = { id: 0 };
+async function requestJoin() {
+  if (state.token || state.join?.phase === 'asking') return;
+  const id = ++join.id;
+  state.ended = false; state.join = { phase: 'asking' }; paint();
+  try {
+    const j = await api('/api/join', {});
+    if (id !== join.id || state.token) return;
+    state.join = { phase: 'waiting', code: j.code, secret: j.secret, until: Date.now() + j.expiresInMs };
+    setTimeout(() => pollJoin(id), JOIN_POLL_MS);
+  } catch {
+    // Too many requests, no signal, or an older server: the phone page still works. A tap tries again.
+    if (id !== join.id || state.token) return;
+    state.join = { phase: 'error' };
+  }
+  paint();
+}
+async function pollJoin(id) {
+  const j = state.join;
+  if (id !== join.id || state.token || !j?.secret) return;
+  try {
+    const r = await api('/api/join/status', { secret: j.secret });
+    if (id !== join.id || state.token) return;
+    if (r.state === 'paired') { await adopt(r.token); return flash(`● Joined ${r.team}`, 6000); }
+    if (r.state === 'claimed') Object.assign(j, { phase: 'claimed', name: r.name, team: r.team });
+    if (r.state === 'expired') { state.join = { phase: 'expired' }; return paint(); }
+  } catch { /* try again on the next round */ }
+  if (j.phase === 'waiting' && Date.now() > j.until) { state.join = { phase: 'expired' }; return paint(); }
+  paint();
+  setTimeout(() => pollJoin(id), JOIN_POLL_MS);
+}
+function tapUnpaired() {
+  const j = state.join;
+  if (j?.phase === 'waiting') return flash(`Send /join ${j.code} in your group`);
+  if (j?.phase === 'claimed') return flash('Waiting for your coordinator');
+  if (j?.phase === 'asking') return flash(BUSY);
+  return requestJoin();
 }
 
 // Sign out: stops this person's check-in notices, then the system exit dialog.
@@ -498,6 +542,8 @@ function onEvent(e) {
     }
     return;
   }
+  if (!state.token && click) return tapUnpaired();
+  if (!state.token && swipe) return flash('Tap: join code. Double tap: exit.');
   if (click && state.reply?.tappable) confirmReplyNow();      // a tap while a reply shows means got it
   else if (click) checkIn();                              // ring or temple tap
   else if (dbl) bridge.shutDownPageContainer(1);          // store rule: system exit dialog
@@ -543,6 +589,7 @@ async function start() {
   setInterval(() => { paint(); askIfNew(); watchDue(); }, 1000); setInterval(pollIfNeeded, 5000); setInterval(heartbeat, 30000);
   sync();
   longPoll();
+  if (!state.token) requestJoin();
 }
 start();
 

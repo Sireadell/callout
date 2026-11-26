@@ -134,3 +134,13 @@ test("the run's quick clues replace the built in ones, at most 4 of 16 character
   assert.deepEqual(quickClues([]), PRESET_CLUES);
   assert.deepEqual(quickClues(['Gate locked', ' ', 'x'.repeat(30), 'b', 'c', 'd']), ['Gate locked', 'x'.repeat(16), 'b', 'c']);
 });
+
+test('the join screens say what to send, and fit', () => {
+  const waiting = glanceView({ join: { phase: 'waiting', code: '4821' } });
+  assert.match(waiting.main, /Join code: 4821/);
+  assert.match(waiting.main, /\/join 4821/);
+  assert.match(glanceView({ join: { phase: 'claimed', name: 'Ana', team: 'Wardens' } }).main, /Hi Ana\./);
+  assert.match(glanceView({ join: { phase: 'expired' } }).hint, /Tap: new code/);
+  assert.match(glanceView({ join: { phase: 'error' } }).status, /Try again in a minute/);
+  fits(glanceView({ join: { phase: 'claimed', name: 'x'.repeat(200), team: 'y'.repeat(200) }, flash: 'z '.repeat(100) }));
+});
