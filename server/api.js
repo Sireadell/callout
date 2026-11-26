@@ -1,3 +1,13 @@
+// One log line that shows whose address the rate limit counts: the caller's, or a proxy in front of the server.
+// Addresses are cut short so no caller can be identified from the log.
+export function describeCaller(req) {
+  const cut = (a) => String(a || '').replace(/^::ffff:/, '').split(/[.:]/).slice(0, 2).join('.') + '.x';
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const direct = req.socket.remoteAddress;
+  const same = chain.length > 0 && chain[0] === String(direct || '').replace(/^::ffff:/, '');
+  return `rate limit sees ${cut(direct)}; forwarded-for entries: ${chain.length}${chain.length ? `, first ${cut(chain[0])}, same as seen: ${same ? 'yes' : 'no'}` : ''}`;
+}
+
 // What the glasses app and the Mini App can ask the server. Kept apart from the web server so it can be tested.
 export function makeRoutes({ engine, stt, miniapp = null, env = process.env }) {
   return {

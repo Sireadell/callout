@@ -11,7 +11,7 @@ import { makeStt } from './stt.js';
 import { makeAi } from './ai.js';
 import { makeMiniApp } from './miniapp.js';
 import { makeSheet } from './sheet.js';
-import { makeRoutes } from './api.js';
+import { makeRoutes, describeCaller } from './api.js';
 import { makeSaver } from './saver.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
@@ -74,9 +74,11 @@ if (process.env.CALLOUT_DEV === '1') {
   };
 }
 
+let callersLogged = 0;
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, {});
   const url = new URL(req.url, 'http://x');
+  if (url.pathname.startsWith('/api/') && callersLogged < 3) { callersLogged += 1; console.log(describeCaller(req)); }
   try {
     if (limited(req.socket.remoteAddress)) return send(res, 429, { error: 'slow down' });
     if (req.method === 'POST' && url.pathname === '/telegram/webhook') {
