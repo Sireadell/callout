@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Engine } from '../server/engine.js';
-import { makeRoutes, describeCaller } from '../server/api.js';
+import { makeRoutes, describeCaller, callerOf } from '../server/api.js';
 
 function setup(env = {}) {
   const clock = { t: 1_000_000, now() { return this.t; }, advance(ms) { this.t += ms; } };
@@ -41,4 +41,13 @@ test('voice returns the words and what they ask for, and sends nothing by itself
   await routes['POST /api/voice']({ token, devText: 'OK' });
   assert.equal(sent.length, 0);
   assert.equal(Object.values(engine.runs[run.id].volunteers)[0].checkins, 0);
+});
+
+test('behind the host relay the limit counts each caller, and a sent header cannot fake one', () => {
+  const req = (direct, forwarded) => ({ socket: { remoteAddress: direct }, headers: forwarded ? { 'x-forwarded-for': forwarded } : {} });
+  assert.equal(callerOf(req('::ffff:10.20.30.40', '203.0.113.9, 172.70.0.1, 10.1.2.3')), '203.0.113.9');
+  assert.equal(callerOf(req('10.20.30.40', '198.51.100.7, 172.70.0.1, 10.1.2.3')), '198.51.100.7');
+  assert.equal(callerOf(req('10.20.30.40', '1.2.3.4, 203.0.113.9, 172.70.0.1, 10.1.2.3')), '203.0.113.9');
+  assert.equal(callerOf(req('203.0.113.50', '1.2.3.4')), '203.0.113.50');
+  assert.equal(callerOf(req('127.0.0.1')), '127.0.0.1');
 });

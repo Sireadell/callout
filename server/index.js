@@ -11,7 +11,7 @@ import { makeStt } from './stt.js';
 import { makeAi } from './ai.js';
 import { makeMiniApp } from './miniapp.js';
 import { makeSheet } from './sheet.js';
-import { makeRoutes, describeCaller } from './api.js';
+import { makeRoutes, describeCaller, callerOf } from './api.js';
 import { makeSaver } from './saver.js';
 import { makeJoins } from './join.js';
 import { makeStatus } from './status.js';
@@ -85,7 +85,6 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname.startsWith('/api/') && callersLogged < 3) { callersLogged += 1; console.log(describeCaller(req)); }
   try {
-    if (limited(req.socket.remoteAddress)) return send(res, 429, { error: 'slow down' });
     if (req.method === 'POST' && url.pathname === '/telegram/webhook') {
       if (!process.env.TELEGRAM_WEBHOOK_SECRET || req.headers['x-telegram-bot-api-secret-token'] !== process.env.TELEGRAM_WEBHOOK_SECRET) return send(res, 401, {});
       const update = await body(req);
@@ -93,6 +92,8 @@ const server = http.createServer(async (req, res) => {
       bot?.handle(update).catch((e) => console.error('bot error:', e.message));
       return;
     }
+    // Telegram's updates are never limited: they are checked by their secret above.
+    if (limited(callerOf(req))) return send(res, 429, { error: 'slow down' });
     if (req.method === 'POST' && url.pathname === '/discord/interactions') {
       const raw = await rawBody(req);
       if (!process.env.DISCORD_PUBLIC_KEY || !verifyInteraction(process.env.DISCORD_PUBLIC_KEY, String(req.headers['x-signature-ed25519'] || ''), req.headers['x-signature-timestamp'], raw)) return send(res, 401, {});
@@ -108,7 +109,7 @@ const server = http.createServer(async (req, res) => {
     // A held request stops waiting if the caller hangs up.
     const gone = new AbortController();
     res.on('close', () => { if (!res.writableEnded) gone.abort(); });
-    const out = await fn(input, { signal: gone.signal, caller: req.socket.remoteAddress });
+    const out = await fn(input, { signal: gone.signal, caller: callerOf(req) });
     if (!gone.signal.aborted) send(res, 200, out);
   } catch (e) {
     send(res, e.status || 400, { error: e.message });

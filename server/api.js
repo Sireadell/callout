@@ -15,6 +15,17 @@ export function describeCaller(req) {
   return `rate limit sees ${cut(direct)}; forwarded-for entries: ${chain.length}${chain.length ? `, first ${cut(chain[0])}, same as seen: ${same ? 'yes' : 'no'}` : ''}`;
 }
 
+// Whose requests the rate limit counts. On the host, every request arrives from the host's own relay, and
+// the caller's address is in x-forwarded-for, which ends with three relay-added entries: the caller and two
+// relays. Counting from the end means a caller cannot choose their own address by sending the header.
+const PRIVATE = /^(10[.]|127[.]|192[.]168[.]|172[.](1[6-9]|2[0-9]|3[01])[.]|100[.](6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])[.]|::1$|f[cd])/;
+export function callerOf(req) {
+  const direct = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  if (!PRIVATE.test(direct)) return direct; // reached directly: the header means nothing
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return chain.at(-3) || chain[0] || direct;
+}
+
 // What the glasses app and the Mini App can ask the server. Kept apart from the web server so it can be tested.
 export function makeRoutes({ engine, stt, status = null, joins = null, botName = () => null, miniapp = null, env = process.env }) {
   const sync = makeLongPoll({ engine });
