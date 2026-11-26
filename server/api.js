@@ -1,6 +1,7 @@
 import { intentOf } from './intent.js';
 import { makeLongPoll } from './longpoll.js';
 import { makeLimiter } from './limit.js';
+import { pcmToMp3 } from './voicenote.js';
 
 // One log line that shows whose address the rate limit counts: the caller's, or a proxy in front of the server.
 // Addresses are cut short so no caller can be identified from the log.
@@ -41,7 +42,13 @@ export function makeRoutes({ engine, stt, status = null, joins = null, botName =
     'POST /api/join/status': (b) => { if (!joins) throw new Error('not set up'); return joins.status(String(b.secret || '')); },
     'POST /api/checkin': (b) => engine.checkIn(b.token, { pos: b.pos, at: b.at }),
     'POST /api/heartbeat': (b) => { engine.heartbeat(b.token, b); return { ok: true }; },
-    'POST /api/clue': (b) => { const c = engine.clue(b.token, b); return { id: c.id }; },
+    // "audio" is the clue's recording. It is used only when the coordinator turned voice notes on.
+    'POST /api/clue': (b) => {
+      const { run } = engine.touch(b.token, b.pos);
+      const voice = run.voiceNotes && b.audio ? pcmToMp3(Buffer.from(String(b.audio), 'base64')) : null;
+      const c = engine.clue(b.token, { text: b.text, pos: b.pos, at: b.at, voice });
+      return { id: c.id };
+    },
     'POST /api/signout': (b) => { engine.signOut(b.token); return { ok: true }; },
     'POST /api/backup': (b) => { engine.needBackup(b.token, { pos: b.pos }); return { ok: true }; },
     'POST /api/confirm': (b) => { engine.confirmReply(b.token, b.replyId); return { ok: true }; },
@@ -56,6 +63,8 @@ export function makeRoutes({ engine, stt, status = null, joins = null, botName =
         : await stt.transcribe(Buffer.from(String(b.audio || ''), 'base64'));
       return { text, intent: intentOf(text, engine.quickClues(run)) };
     },
+    // The picture a coordinator sent with a reply. Held in memory for 15 minutes.
+    'POST /api/picture': (b) => engine.picture(b.token, b.replyId),
     'POST /api/answer': (b) => { engine.answer(b.token, { questionId: b.questionId, answer: b.answer, at: b.at }); return { ok: true }; },
     // A photo for a clue already sent: base64 JPEG, passed on to the chat and not kept.
     'POST /api/photo': (b) => engine.attachPhoto(b.token, { clueId: b.clueId, bytes: Buffer.from(String(b.image || ''), 'base64') }),

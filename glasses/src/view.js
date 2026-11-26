@@ -149,6 +149,23 @@ export const MENU = [
   { itemID: 5, itemName: 'Sign out' },
 ];
 
+// Added to the menu once the coordinator has sent a picture.
+export const PHOTO_ITEM = { itemID: 10, itemName: 'Show last photo' };
+
+// The largest the lens takes is 288 by 144 and the smallest side is 20. The shape is kept.
+export function pictureSize(w, h) {
+  const k = Math.min(288 / w, 144 / h);
+  return { width: Math.max(20, Math.round(w * k)), height: Math.max(20, Math.round(h * k)) };
+}
+// Colour to the brightness the green lens can show, in place on RGBA pixels.
+export function toGrey(rgba) {
+  for (let i = 0; i < rgba.length; i += 4) {
+    const y = Math.round(0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2]);
+    rgba[i] = rgba[i + 1] = rgba[i + 2] = y; rgba[i + 3] = 255;
+  }
+  return rgba;
+}
+
 // Added to the menu while the coordinator's question is open.
 export const ANSWER_ITEM = { itemID: 9, itemName: 'Answer question' };
 
@@ -170,8 +187,8 @@ export const HOLD_MIN_MS = 500;
 export const holdScreen = (what = 'it') => ({ main: ['● Listening', '', `Say ${what} now.`], hint: 'Let go to send.' });
 export const listenScreen = (secs, what = 'clue') => ({ main: ['● Listening', '', `Say your ${what}.`, `${secs}s left.`], hint: 'Tap when done. Swipe to cancel.' });
 export const thinkScreen = () => ({ main: ['Got it.', '', 'Turning it into text...'], hint: '' });
-export const confirmScreen = (text, secs, what = 'clue') => ({
-  main: [`Your ${what}:`, fit([`"${String(text)}"`], 5)],
+export const confirmScreen = (text, secs, what = 'clue', voice = false) => ({
+  main: [voice ? `Your ${what}, with your voice:` : `Your ${what}:`, fit([`"${String(text)}"`], 5)],
   hint: `Sending in ${secs}s. Tap: send. Swipe: cancel.`,
 });
 

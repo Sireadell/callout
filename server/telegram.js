@@ -92,6 +92,28 @@ export class Telegram {
       return data.result;
     });
   }
+  // Fetches a file someone sent in the chat. The address holds the bot token, so it never goes into an error.
+  async download(fileId, maxBytes = 400 * 1024) {
+    const file = await this.call('getFile', { file_id: fileId });
+    if (file.file_size > maxBytes) throw new Error('file too large');
+    let res;
+    try { res = await this.fetch(`https://api.telegram.org/file/bot${this.token}/${file.file_path}`); } catch { throw new Error('telegram download failed'); }
+    if (!res.ok) throw new Error(`telegram download: ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  // A voice message, sent as a file like a photo.
+  sendVoice(chatId, bytes, extra = {}) {
+    return this._queued(chatId, async () => {
+      const form = new FormData();
+      form.set('chat_id', String(chatId));
+      form.set('voice', new Blob([bytes], { type: 'audio/mpeg' }), 'clue.mp3');
+      for (const [k, v] of Object.entries(extra)) { if (v === undefined || v === null) continue; form.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v)); }
+      const res = await this.fetch(`https://api.telegram.org/bot${this.token}/sendVoice`, { method: 'POST', body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok) throw new Error(`telegram sendVoice: ${data.description || res.status}`);
+      return data.result;
+    });
+  }
   createForumTopic(chatId, name) { return this.call('createForumTopic', { chat_id: chatId, name: name.slice(0, 120) }); }
   closeForumTopic(chatId, threadId) { return this.call('closeForumTopic', { chat_id: chatId, message_thread_id: threadId }); }
   pin(chatId, messageId) {

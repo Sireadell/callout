@@ -15,6 +15,7 @@ import { makeRoutes, describeCaller, callerOf } from './api.js';
 import { makeSaver } from './saver.js';
 import { makeJoins } from './join.js';
 import { makeStatus } from './status.js';
+import { makeSandboxes, sandboxRequest } from './sandbox.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const PORT = Number(process.env.PORT || 8787);
@@ -69,6 +70,10 @@ const joins = makeJoins({ engine });
 let botName = null;
 const status = makeStatus({ engine, parts: { telegram: () => Boolean(bot), ai: ai.enabled, sheet: Boolean(sheet) } });
 const routes = makeRoutes({ engine, stt, status, joins, botName: () => botName, miniapp });
+// The try-it page: practice teams in memory, cut off from the real teams, chats, sheet and disk.
+const sandboxes = makeSandboxes({ stt: process.env.ASSEMBLYAI_API_KEY ? stt : null });
+setInterval(() => sandboxes.tick(), 5000).unref();
+
 // Local testing only: makes a team, a run and one volunteer and returns the pairing code.
 if (process.env.CALLOUT_DEV === '1') {
   routes['POST /dev/seed'] = (b) => {
@@ -103,9 +108,20 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       return res.end(fs.readFileSync(new URL('./public/app.html', import.meta.url)));
     }
+    if (url.pathname === '/try' || url.pathname.startsWith('/try/')) {
+      const gone = new AbortController();
+      res.on('close', () => { if (!res.writableEnded) gone.abort(); });
+      const out = await sandboxRequest(sandboxes, { method: req.method, path: url.pathname.replace(/\/$/, ''), caller: callerOf(req), signal: gone.signal,
+        readBody: (cap) => (req.method === 'POST' ? body(req, cap) : Promise.resolve({})) });
+      if (gone.signal.aborted) return;
+      if (!out) return send(res, 404, { error: 'not found' });
+      if (!out.file) return send(res, 200, out.json);
+      res.writeHead(200, { 'content-type': out.type, 'cache-control': 'no-store' });
+      return res.end(out.file);
+    }
     const fn = routes[`${req.method} ${url.pathname}`];
     if (!fn) return send(res, 404, { error: 'not found' });
-    const input = req.method === 'POST' ? await body(req, (url.pathname === '/api/voice' || url.pathname === '/api/photo') ? 900 * 1024 : undefined) : {};
+    const input = req.method === 'POST' ? await body(req, ['/api/voice', '/api/photo', '/api/clue'].includes(url.pathname) ? 900 * 1024 : undefined) : {};
     // A held request stops waiting if the caller hangs up.
     const gone = new AbortController();
     res.on('close', () => { if (!res.writableEnded) gone.abort(); });

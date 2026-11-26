@@ -139,6 +139,15 @@ export function makeRouter({ engine, telegram = null, discord = null, ai = null,
     if (run && n.volunteerId) (run.msgIndex ||= {})[`${chat}:${sent.message_id}`] = n.volunteerId;
     if (run && POS_KINDS.has(n.kind)) (run.posMsgs ||= []).push([chat, sent.message_id]);
     if (run && (n.kind === 'clue' || n.kind === 'need_backup')) (run.clueMsg ||= {})[`${chat}:${n.clueId}`] = sent.message_id;
+    // The recording goes right under its clue. A refused one never stops the clue.
+    if (run && n.voice && telegram.sendVoice) {
+      telegram.sendVoice(chat, n.voice, { reply_to_message_id: sent.message_id, allow_sending_without_reply: true, disable_notification: true, protect_content: true, ...threadOf(run, chat, team) })
+        .then((m) => {
+          (run.msgIndex ||= {})[`${chat}:${m.message_id}`] = n.volunteerId; // a reply to the voice note reaches the speaker
+          (run.posMsgs ||= []).push([chat, m.message_id]); // removed with "/end clear"
+        })
+        .catch((e) => log('voice note failed:', e.message));
+    }
     if (run && n.kind === 'clue') addDrafts(run, chat, sent.message_id, n).catch((e) => log('drafts failed:', e.message));
     if (run && n.kind === 'debrief') await stopLive(run.id);
   }

@@ -16,6 +16,8 @@ export const DEFAULTS = Object.freeze({
 });
 
 const QUESTION_TTL_MS = 15 * 60_000;
+const PICTURE_TTL_MS = 15 * 60_000;
+const PICTURE_MAX = 400 * 1024;
 export const QUICK_CLUES = Object.freeze(['All done', 'No answer', 'Spoke to them', 'Access blocked']);
 
 const ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789'; // no 0/O/1/I/L
@@ -35,6 +37,7 @@ export class Engine {
     this.pairings = {};
     this.tokens = {};
     this.timings = {};
+    this.pictures = new Map(); // reply id -> picture for the lens, in memory only, never saved
   }
 
   // Check-in gap for a run: set with /interval, else the default.
@@ -61,6 +64,16 @@ export class Engine {
   }
 
   // ---------- setup ----------
+  // Voice notes: off unless the coordinator turns them on for this run.
+  setVoiceNotes(runId, on) {
+    const run = this._run(runId);
+    if (Boolean(run.voiceNotes) === on) return;
+    run.voiceNotes = on || undefined;
+    this._bumpAll(run);
+    this.changed();
+    this._emit(run, 'team', 'voice_notes', on ? 'Voice notes are on: the recording of each spoken clue is sent to this chat.' : 'Voice notes are off: only the words of a clue are sent.');
+  }
+
   addTeam({ name, telegram = null, discord = null }) {
     const id = newId('team');
     this.teams[id] = { id, name, telegram, discord };
@@ -214,7 +227,8 @@ export class Engine {
     this._emit(run, 'coordinator', 'app_closed', `${v.name} (${v.area}): the glasses app was closed at ${at} UTC. Last position: ${place(v.pos)}.`, { volunteerId: v.id });
   }
 
-  clue(token, { text, pos, photoId = null, at = undefined }) {
+  // voice: the clue's recording as MP3, passed to the chat with the clue and never kept here.
+  clue(token, { text, pos, photoId = null, at = undefined, voice = null }) {
     const { run, v } = this._auth(token);
     this._touch(run, v, pos);
     const madeAt = this._when({ lastCheckin: 0 }, at);
@@ -223,6 +237,7 @@ export class Engine {
     run.clues.push(clue);
     this._emit(run, 'team', 'clue', `${v.name} (${v.area}): ${clue.text}${lateMin >= 1 ? ` (sent ${lateMin} min late)` : ''} [${place(clue.pos)}]`, {
       volunteerId: v.id, clueId: clue.id, clueText: clue.text, who: `${v.name} (${v.area})${lateMin >= 1 ? `, sent ${lateMin} min late` : ''}`, pos: clue.pos,
+      ...(voice && run.voiceNotes ? { voice } : {}),
     });
     return clue;
   }
@@ -273,8 +288,8 @@ export class Engine {
     return {
       rev: v.rev || 0,
       runName: run.name, area: v.area, dueInMs: v.lastCheckin + this.gap(run) - now,
-      step: v.step, replies: replies.map((r) => ({ id: r.id, text: r.short || r.text, full: r.text, by: r.by })),
-      team: this.teamStatus(run.id), quickClues: this.quickClues(run), question: this._openQuestion(v),
+      step: v.step, replies: replies.map((r) => ({ id: r.id, text: r.short || r.text, full: r.text, by: r.by, picture: this.pictures.has(r.id) || undefined })),
+      team: this.teamStatus(run.id), quickClues: this.quickClues(run), voiceNotes: run.voiceNotes, question: this._openQuestion(v),
     };
   }
 
@@ -334,14 +349,30 @@ export class Engine {
     this._bumpAll(run);
   }
 
-  reply(runId, { volunteerId, text, by = 'coordinator', short, src }) {
+  reply(runId, { volunteerId, text, by = 'coordinator', short, src, picture }) {
     const run = this._run(runId);
     if (!run.volunteers[volunteerId]) throw new Error('unknown volunteer');
+    if (picture && picture.length > PICTURE_MAX) throw new Error('picture too large');
     const r = { id: newId('rep'), volunteerId, text: String(text).slice(0, 500), short: short ? String(short).slice(0, 80) : undefined, by, src, at: this.clock.now(), delivered: false, confirmedAt: null };
     run.replies.push(r);
+    if (picture) {
+      r.picture = true;
+      this.pictures.set(r.id, { data: Buffer.from(picture).toString('base64'), at: r.at });
+      while (this.pictures.size > 30) this.pictures.delete(this.pictures.keys().next().value);
+    }
     r.rev = (run.volunteers[volunteerId].rev || 0) + 1;
     this._bump(run.volunteers[volunteerId]);
     return r;
+  }
+
+  // The picture that came with a reply, for that volunteer's lens only.
+  picture(token, replyId) {
+    const { v } = this._auth(token);
+    const run = this.findVolunteer(v.id).run;
+    const r = run.replies.find((x) => x.id === replyId && x.volunteerId === v.id);
+    const p = r && this.pictures.get(r.id);
+    if (!p || this.clock.now() - p.at > PICTURE_TTL_MS) throw new Error('picture gone');
+    return { image: p.data };
   }
 
   // A coordinator question for the lens, with answers the volunteer can send in one tap.
@@ -384,6 +415,7 @@ export class Engine {
   // ---------- the clock ----------
   tick() {
     const now = this.clock.now();
+    for (const [id, p] of this.pictures) if (now - p.at > PICTURE_TTL_MS) this.pictures.delete(id);
     for (const run of Object.values(this.runs)) {
       if (run.status !== 'active') continue;
       for (const v of Object.values(run.volunteers)) {
@@ -450,6 +482,7 @@ export class Engine {
     const reached = new Set(debrief.volunteers.filter((v) => v.checkins > 0).map((v) => v.area));
     debrief.areasWithoutCheckin = [...new Set(debrief.volunteers.map((v) => v.area))].filter((a) => !reached.has(a));
     run.status = 'ended';
+    for (const r of run.replies) this.pictures.delete(r.id);
     // The notice carries the counts for a table. Trails and positions stay out of it.
     this._emit(run, 'team', 'debrief', this.debriefText(debrief), {
       table: { title: `Run "${debrief.run}" finished after ${mins(debrief.endedAt - debrief.startedAt)} min`, clues: debrief.clues.length, areasWithoutCheckin: debrief.areasWithoutCheckin,

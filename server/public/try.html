@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Try Callout in your browser</title>
+<style>
+:root{--ink:#111;--soft:#555;--line:#cfcfc8;--paper:#f4f4f0;--lens:#4cff7a;--mark:#ffd400}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+header{background:var(--ink);color:#fff;padding:14px 18px}
+header h1{margin:0;font-size:20px;color:var(--mark)}
+header p{margin:4px 0 0;color:#ddd;max-width:70ch}
+main{display:grid;grid-template-columns:minmax(0,600px) minmax(300px,1fr);gap:20px;padding:18px;max-width:1240px;margin:0 auto}
+@media(max-width:960px){main{grid-template-columns:minmax(0,1fr)}}
+h2{font-size:15px;margin:0 0 8px}
+#frame{background:#000;border-radius:8px;padding:8px;overflow:hidden}
+#scale{position:relative;width:576px;height:288px;transform-origin:top left}
+#lens{position:absolute;inset:0;color:var(--lens);font:18px/28px ui-monospace,Consolas,monospace}
+#lens div{position:absolute;overflow:hidden;white-space:pre}
+#lens button{display:block;width:100%;text-align:left;background:none;border:2px solid transparent;color:var(--lens);font:inherit;padding:2px 8px;cursor:pointer;border-radius:6px}
+#lens button[aria-current=true]{border-color:var(--lens)}
+.row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;align-items:center}
+button,input{font:inherit}
+.row button,.msg button,#send button,.big{background:#fff;border:1px solid #999;border-radius:6px;padding:8px 12px;cursor:pointer;min-height:40px}
+button:focus-visible,input:focus-visible{outline:3px solid #2457d6;outline-offset:2px}
+input[type=text]{flex:1;min-width:180px;border:1px solid #999;border-radius:6px;padding:8px 10px;min-height:40px}
+.row b{width:100%;font-size:13px;color:var(--soft);font-weight:600}
+#steps{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px 10px 30px;margin:0 0 14px}
+#chat{height:520px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px}
+.msg{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 8px;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.you{background:#eaf2ff;margin-left:40px}
+.msg small{display:block;color:var(--soft)}
+.msg .keys{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.msg .reply{border:0;background:none;text-decoration:underline;padding:2px 0;min-height:0;color:var(--soft)}
+#send{display:flex;gap:6px;margin-top:8px}
+#replying{margin:8px 0 0;color:var(--soft)}
+.msg audio{display:block;width:100%;margin-top:6px}
+.shot{display:block;max-width:160px;margin:4px 0}
+.big{display:inline-block}
+#note,#state{color:var(--soft);min-height:1.4em;margin:8px 0 0}
+#state.bad{color:#a30018;font-weight:600}
+footer{padding:0 18px 24px;max-width:1240px;margin:0 auto;color:var(--soft);font-size:13px}
+</style>
+<script type="importmap">{"imports":{"@evenrealities/even_hub_sdk":"/try/sdk.js"}}</script>
+</head><body>
+<header>
+<h1>Try Callout in your browser</h1>
+<p>This is a browser preview, not the glasses. The lens on the left runs the same app code as the glasses, and the chat on the right runs the same bot as the real Telegram group. You get your own practice team. Nobody else sees it, and it's gone after 30 minutes.</p>
+</header>
+<main>
+<section aria-label="Volunteer">
+<h2>Volunteer: what Alex sees on the glasses</h2>
+<ol id="steps">
+<li>Press <b>Tap</b> to check in. The status board in the chat updates.</li>
+<li>Type what you would say, then press <b>Say it</b>. Try "gate on Mill Lane is locked".</li>
+<li>In the chat, press a reply button under your clue. It shows on the lens. Tap to say "got it".</li>
+<li>In the chat, send <code>/ask Alex is the road open?</code>, then pick an answer on the lens.</li>
+<li>Send a photo from the chat side. It shows on the lens in grey, the way the glasses draw it.</li>
+<li>Send <code>/voice on</code>, tick "Use my microphone", hold to talk, and play the voice note that lands under your clue.</li>
+<li>Stop checking in. After about two and a half minutes the coordinator gets a missed check-in notice.</li>
+</ol>
+<div id="frame"><div id="scale"><div id="lens" aria-live="polite"></div></div></div>
+<p id="state" role="status">Starting your practice team...</p>
+<div class="row"><b>Ring and temple</b><button data-do="tap">Tap</button><button data-do="up">Swipe up</button><button data-do="down">Swipe down</button><button data-do="double">Double tap</button></div>
+<div class="row"><b>Voice</b><input type="text" id="words" placeholder="Type what you would say" aria-label="Words to say"><button data-do="say">Say it</button></div>
+<div class="row"><label><input type="checkbox" id="usemic"> Use my microphone instead. The recording goes to a speech to text service to get the words.</label><button id="holdkey" type="button">Hold to talk</button></div>
+<div class="row" id="menu"><b>Glasses menu</b></div>
+</section>
+<section aria-label="Coordinator">
+<h2>Coordinator: the team chat, in place of Telegram</h2>
+<div id="chat"></div>
+<p id="replying" hidden></p>
+<form id="send"><input type="text" id="line" placeholder="/status, /ask Alex ..., or a reply" aria-label="Message to the team chat"><button>Send</button></form>
+<p><label class="big">Send a photo to the lens <input type="file" id="photo" accept="image/*"></label></p>
+<p id="note" role="status"></p>
+</section>
+</main>
+<footer>Practice timers are short: a check-in is due every 2 minutes. This page uses no AI service and never reads your position. Callout sends team notices only. It is not an emergency service.</footer>
+<script type="module" src="/try/page.js"></script>
+</body></html>

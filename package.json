@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Field-team check-in for Even Realities G2 glasses, with Telegram and Discord.",
   "engines": { "node": ">=22" },
+  "dependencies": {
+    "@breezystack/lamejs": "1.2.7"
+  },
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
     "start": "node server/index.js",

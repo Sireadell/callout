@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - run: npm ci
       - run: npm test
       - run: npm run proof
 
@@ -29,6 +30,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      # The dev panel proof starts the server, which has one package of its own.
+      - run: npm ci
       - run: npm ci
         working-directory: glasses
       - run: npm test

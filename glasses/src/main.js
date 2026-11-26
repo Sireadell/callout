@@ -1,5 +1,5 @@
 import { waitForEvenAppBridge, OsEventTypeList, EventSourceType, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
-import { view, BOXES, MENU, ANSWER_ITEM, questionText, questionRows, SPEAK, quickClues, HOLD_MAX_S, HOLD_MIN_MS, holdScreen, listenScreen, thinkScreen, confirmScreen, isOk, voiceAction, okScreen, stillScreen, backupScreen } from './view.js';
+import { view, BOXES, MENU, ANSWER_ITEM, questionText, questionRows, SPEAK, quickClues, HOLD_MAX_S, HOLD_MIN_MS, holdScreen, listenScreen, thinkScreen, confirmScreen, isOk, voiceAction, okScreen, stillScreen, backupScreen, PHOTO_ITEM, pictureSize, toGrey, fit } from './view.js';
 import { makeStillness } from './motion.js';
 
 const SERVER = import.meta.env?.VITE_SERVER_URL || localStorage.getItem('callout.server') || 'http://localhost:8787';
@@ -28,8 +28,9 @@ async function api(path, body, { signal } = {}) {
 function endedByServer() {
   if (!state.token) return;
   const listUp = onListPage();
-  ok.run += 1; clearInterval(voice.timer); state.pending = null;
+  ok.run += 1; clearInterval(voice.timer); state.pending = null; state.pendingAudio = null; voice.frames = [];
   bridge?.audioControl(false).catch(() => {}); // the microphone never stays open
+  state.lastPicture = null; state.newPicture = null; clearTimeout(state.pictureTimer);
   state.token = null; state.sync = null; state.join = null; state.ended = true; state.mode = 'glance'; state.reply = null; state.question = null; state.answering = null;
   bridge?.setLocalStorage('callout.token', '').catch(() => {});
   if (listUp) bridge.rebuildPageContainer(TEXT_PAGE()).catch(() => {}); else paint();
@@ -52,9 +53,9 @@ async function draw() {
   }
 }
 function setScreen(screen) { state.screen = screen; paint(); }
-// The quick clue and question pages replace the text boxes until they are closed.
-const onListPage = () => state.mode === 'presets' || state.mode === 'question';
-const menuItems = () => (state.question ? [...MENU, ANSWER_ITEM] : MENU);
+// The quick clue, question and picture pages replace the text boxes until they are closed.
+const onListPage = () => state.mode === 'presets' || state.mode === 'question' || state.mode === 'picture';
+const menuItems = () => [...MENU, ...(state.question ? [ANSWER_ITEM] : []), ...(state.lastPicture ? [PHOTO_ITEM] : [])];
 
 const TEXT_PAGE = () => {
   const now = view(state);
@@ -149,6 +150,7 @@ function dueMs() { return state.sync ? state.sync.dueInMs - (Date.now() - state.
 const checkInWaiting = () => dueMs() <= 0 && !state.okTried;
 function watchDue() {
   if (state.mode === 'question' && checkInWaiting()) return closeQuestion(); // the question stays in the menu
+  if (state.mode === 'picture' && checkInWaiting()) return closePicture(); // the photo stays in the menu
   if (state.mode !== 'glance' || !state.token || !state.sync || state.closed) return;
   if (dueMs() > 0) state.okTried = false;
   else if (!state.okTried) { state.okTried = true; okWindow(); }
@@ -173,26 +175,28 @@ async function stopTalk() {
     if (asked.type === 'none') return cancelClue('Heard nothing. Try again');
     if (asked.type === 'cancel') return cancelClue('Cancelled');
     if (state.answering) return showConfirm(String(res.text).trim()); // an answer is only words
-    if (asked.type === 'clue') return showConfirm(asked.text);
+    // With voice notes on, the recording goes with the clue, and the confirm screen says so.
+    if (asked.type === 'clue') return showConfirm(asked.text, state.sync?.voiceNotes ? toBase64(joinFrames()) : null);
     state.mode = 'glance';
     if (asked.type === 'backup') return askBackup(); // never sent from voice alone
     return checkIn();
   } catch { if (!left()) cancelClue('▲ Could not hear you. Try again'); }
 }
 
-function showConfirm(text) {
-  state.mode = 'confirm'; state.pending = text;
+function showConfirm(text, audio = null) {
+  state.mode = 'confirm'; state.pending = text; state.pendingAudio = audio;
   const what = state.answering ? 'answer' : undefined;
-  let left = 3; setScreen(confirmScreen(text, left, what));
+  let left = 3; setScreen(confirmScreen(text, left, what, Boolean(audio)));
   clearInterval(voice.timer);
-  voice.timer = setInterval(() => { left -= 1; if (left <= 0) sendPending(); else setScreen(confirmScreen(text, left, what)); }, 1000);
+  voice.timer = setInterval(() => { left -= 1; if (left <= 0) sendPending(); else setScreen(confirmScreen(text, left, what, Boolean(audio))); }, 1000);
 }
 
-async function sendClue(text) {
+async function sendClue(text, audio) {
   flash('○ Sending clue...', 8000);
   const here = await pos();
-  try { const r = await api('/api/clue', { text, pos: here }); state.lastClueId = r.id; flash('● Clue sent'); }
-  catch (e) { if (isNetwork(e)) hold('/api/clue', { text, pos: here }, 'Clue'); else flash('▲ Not sent. Try again'); }
+  try { const r = await api('/api/clue', { text, pos: here, audio: audio || undefined }); state.lastClueId = r.id; flash('● Clue sent'); }
+  // A clue kept for later keeps its words only: recordings are not stored on the phone.
+  catch (e) { if (isNetwork(e)) hold('/api/clue', { text, pos: here }, audio ? 'Clue (words only)' : 'Clue'); else flash('▲ Not sent. Try again'); }
 }
 
 // ---- no signal: keep check-ins and clues, send them in order when the server answers again ----
@@ -248,12 +252,13 @@ async function addPhoto(fromCamera) {
 async function sendPending() {
   clearInterval(voice.timer);
   const text = state.pending; state.pending = null; state.mode = 'glance';
+  const audio = state.pendingAudio; state.pendingAudio = null;
   const q = state.answering; state.answering = null;
   if (!text) return;
-  if (q) await sendAnswer(q, text); else await sendClue(text);
+  if (q) await sendAnswer(q, text); else await sendClue(text, audio);
 }
 function cancelClue(msg) {
-  ok.run += 1; clearInterval(voice.timer); state.pending = null; state.answering = null; state.mode = 'glance';
+  ok.run += 1; clearInterval(voice.timer); state.pending = null; state.pendingAudio = null; voice.frames = []; state.answering = null; state.mode = 'glance';
   bridge.audioControl(false).catch(() => {});
   if (msg) flash(msg); else paint();
 }
@@ -326,6 +331,68 @@ async function sendAnswer(q, answer) {
   }
 }
 
+// ---- a picture from the coordinator: shown on the lens until a tap, or for 30 seconds ----
+const PICTURE_MS = 30_000;
+// Shrinks to the lens size and turns grey. Gives back PNG bytes.
+function lensImage(base64) {
+  if (window.__lensImage) return window.__lensImage(base64); // used by tests, which have no canvas
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const size = pictureSize(img.width, img.height);
+      const c = document.createElement('canvas');
+      c.width = size.width; c.height = size.height;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, size.width, size.height);
+      const px = g.getImageData(0, 0, size.width, size.height);
+      toGrey(px.data); g.putImageData(px, 0, 0);
+      c.toBlob((b) => (b ? b.arrayBuffer().then((a) => resolve({ ...size, bytes: Array.from(new Uint8Array(a)) }), reject) : reject(new Error('no image'))), 'image/png');
+    };
+    img.onerror = reject;
+    img.src = `data:image/jpeg;base64,${base64}`;
+  });
+}
+// Only from the main screen, and never over a check-in that is waiting. Otherwise it waits.
+function showIfNewPicture() {
+  const r = state.newPicture;
+  if (!r || state.mode !== 'glance' || checkInWaiting() || state.loadingPicture) return;
+  state.newPicture = null;
+  openPicture(r);
+}
+async function openPicture(r) {
+  if (state.mode !== 'glance' || state.loadingPicture) return;
+  state.loadingPicture = true;
+  try {
+    const image = await lensImage((await api('/api/picture', { replyId: r.id })).image);
+    if (state.mode !== 'glance' || !state.token) { state.newPicture = r; return; }
+    const first = !state.lastPicture;
+    state.lastPicture = r; state.openPic = r; state.mode = 'picture';
+    const text = (containerID, containerName, y, content, textColor, isEventCapture) => ({ xPosition: 0, yPosition: y, width: 576, height: 60, paddingLength: 4, textColor, containerID, containerName, content, isEventCapture });
+    await bridge.rebuildPageContainer({
+      containerTotalNum: 3,
+      textObject: [text(7, 'caption', 0, fit([`${String(r.by || '').trim() || 'Coordinator'}: ${r.text}`], 2), 4, 1), text(8, 'close', 228, r.tappable ? 'Tap: got it.  Swipe: close.' : 'Tap or swipe: close.', 1, 0)],
+      imageObject: [{ xPosition: Math.round((576 - image.width) / 2), yPosition: 72 + Math.round((144 - image.height) / 2), width: image.width, height: image.height, containerID: 9, containerName: 'picture' }],
+      menuObject: { menuItems: menuItems() },
+    });
+    const sent = await bridge.updateImageRawData({ containerID: 9, containerName: 'picture', imageData: image.bytes });
+    if (sent !== undefined && sent !== 'success') { await closePicture(); return flash('▲ Photo could not be shown'); }
+    clearTimeout(state.pictureTimer); state.pictureTimer = setTimeout(() => { if (state.mode === 'picture') closePicture(); }, PICTURE_MS);
+    if (first) console.log('picture shown');
+  } catch { flash('▲ Photo could not be shown'); }
+  finally { state.loadingPicture = false; }
+}
+async function closePicture() {
+  clearTimeout(state.pictureTimer);
+  state.mode = 'glance'; state.openPic = null;
+  await bridge.rebuildPageContainer(TEXT_PAGE());
+}
+async function onPictureEvent(click, done) {
+  if (!click && !done) return;
+  const r = state.openPic;
+  await closePicture();
+  if (click && r.tappable) { r.tappable = false; if (state.reply?.id === r.id) confirmReplyNow(); else api('/api/confirm', { replyId: r.id }).catch(() => {}); }
+}
+
 // A short answer on the lens. Every gesture gets one, or a new screen.
 function flash(msg, ms = 3000) {
   state.flash = msg; state.flashMode = state.mode; paint(); clearTimeout(flashTimer);
@@ -359,11 +426,14 @@ function applySync(reply) {
     const last = fresh.at(-1);
     state.lastReply = last.full || last.text; state.lastReplyBy = last.by;
     showReply(last);
+    const photo = fresh.filter((r) => r.picture).at(-1);
+    if (photo) state.newPicture = { id: photo.id, by: photo.by, text: photo.text, tappable: true };
   }
   state.question = reply.question || null;
   if (state.mode === 'question' && state.openQ.id !== state.question?.id) {
     closeQuestion().then(() => { flash('That question has closed'); askIfNew(); });
   } else askIfNew();
+  showIfNewPicture();
   paint();
 }
 
@@ -482,7 +552,7 @@ function tapUnpaired() {
 const CLOSED = { [OsEventTypeList.FOREGROUND_EXIT_EVENT]: 'foreground_exit', [OsEventTypeList.ABNORMAL_EXIT_EVENT]: 'abnormal_exit', [OsEventTypeList.SYSTEM_EXIT_EVENT]: 'system_exit' };
 function appClosed(reason) {
   if (state.closed) return;
-  if (!['glance', 'presets', 'question'].includes(state.mode)) cancelClue(''); // the microphone never stays open
+  if (!['glance', 'presets', 'question', 'picture'].includes(state.mode)) cancelClue(''); // the microphone never stays open
   state.closed = true; long.live = false; long.ctl?.abort();
   if (!state.token || state.signedOut || window.__quiet) return;
   // keepalive lets the request finish even if the page is going away. Not verified on a phone.
@@ -526,6 +596,7 @@ async function confirmReplyNow() {
 async function onMenu(id) {
   if (state.mode === 'presets') await closePresets();
   else if (state.mode === 'question') await closeQuestion();
+  else if (state.mode === 'picture') await closePicture();
   else if (state.mode !== 'glance') cancelClue('');
   if (id === 1) checkIn();
   else if (id === 2) startTalk(false);
@@ -535,6 +606,7 @@ async function onMenu(id) {
   else if (id === 8) askBackup();
   else if (id === 6) addPhoto(true);
   else if (id === 7) addPhoto(false);
+  else if (id === 10) { if (state.lastPicture) openPicture(state.lastPicture); else flash('No photo yet'); }
   else if (id === 9) { if (state.question) openQuestion(state.question); else flash('No open question'); }
 }
 
@@ -567,6 +639,7 @@ function onEvent(e) {
   if (state.mode === 'confirm') { if (click) sendPending(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
   if (state.mode === 'think') return flash(BUSY);
   if (state.mode === 'question') return onQuestionEvent(click, dbl, e.listEvent);
+  if (state.mode === 'picture') return onPictureEvent(click, swipe || dbl);
   if (state.mode === 'backup') { if (click) sendBackup(); else if (swipe || dbl) { clearTimeout(state.backupTimer); cancelClue('Cancelled'); } return; }
   if (state.mode === 'presets') {
     if (dbl) return closePresets();
@@ -590,6 +663,7 @@ function onEvent(e) {
 function onHold() {
   if (state.mode === 'presets') return closePresets().then(() => startTalk(true));
   if (state.mode === 'question') return speakAnswer(true);
+  if (state.mode === 'picture') return closePicture().then(() => startTalk(true));
   if (state.mode === 'ok' || state.mode === 'confirm') { const q = state.answering; cancelClue(''); state.answering = q; return startTalk(true); }
   if (state.mode === 'glance') return startTalk(true);
   if (state.mode === 'think') return flash(BUSY);
@@ -621,7 +695,7 @@ async function start() {
   // Local testing: open the page with ?code=XXXX to pair without typing.
   const urlCode = new URLSearchParams(location.search).get('code');
   if (urlCode && !state.token) await pair(urlCode.toUpperCase()).catch(() => {});
-  setInterval(() => { paint(); askIfNew(); watchDue(); }, 1000); setInterval(pollIfNeeded, 5000); setInterval(heartbeat, 30000);
+  setInterval(() => { paint(); askIfNew(); watchDue(); showIfNewPicture(); }, 1000); setInterval(pollIfNeeded, 5000); setInterval(heartbeat, 30000);
   sync();
   longPoll();
   if (!state.token) requestJoin();
