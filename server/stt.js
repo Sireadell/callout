@@ -17,9 +17,14 @@ export function makeStt({ apiKey, fetchImpl = fetch, sleep = sleepReal, maxWaitM
   // Ask the provider to delete the transcript and its audio as soon as we have the words. Best effort.
   const forget = (id) => { Promise.resolve(fetchImpl(`https://api.assemblyai.com/v2/transcript/${id}`, { method: 'DELETE', headers })).catch(() => {}); };
   async function transcribe(pcm) {
+    if (!pcm?.length || pcm.length < RATE * 2 * 0.3) { if (!apiKey) throw new Error('speech to text is not set up'); return ''; } // under 0.3 s: nothing to hear
+    return transcribeFile(pcmToWav(pcm));
+  }
+  // Any audio file the provider can read, such as a Telegram voice message (OGG).
+  async function transcribeFile(file) {
     if (!apiKey) throw new Error('speech to text is not set up');
-    if (!pcm?.length || pcm.length < RATE * 2 * 0.3) return ''; // under 0.3 s: nothing to hear
-    const up = await fetchImpl('https://api.assemblyai.com/v2/upload', { method: 'POST', headers, body: pcmToWav(pcm) });
+    if (!file?.length) return '';
+    const up = await fetchImpl('https://api.assemblyai.com/v2/upload', { method: 'POST', headers, body: file });
     if (!up.ok) throw new Error(`upload ${up.status}`);
     const { upload_url } = await up.json();
     const start = await fetchImpl('https://api.assemblyai.com/v2/transcript', {
@@ -38,5 +43,5 @@ export function makeStt({ apiKey, fetchImpl = fetch, sleep = sleepReal, maxWaitM
     }
     throw new Error('speech to text timed out');
   }
-  return { transcribe };
+  return { transcribe, transcribeFile };
 }

@@ -15,9 +15,9 @@ const HELP = [
   '/interval <minutes>  set the check-in gap for this run (5 to 60)',
   '/voice on  also send the recording of each spoken clue to this chat (/voice off to stop)',
   '/clues a, b, c, d  set the one-tap clues on the lens (/clues default to reset)',
-  '/reply <name> <text>  send a line to a volunteer\'s lens (or reply to their clue)',
-  '/ask <name> <question>  ask on a volunteer\'s lens, with one-tap answers',
-  'Reply to a clue with a photo to show it on the volunteer\'s lens.',
+  '/reply <name> <text>  send a line to a volunteer\'s lens (or reply to their clue). /reply all <text> sends it to everyone',
+  '/ask <name> <question>  ask on a volunteer\'s lens, with one-tap answers. /ask all <question> asks everyone and counts the answers on the board',
+  'Reply to a clue with a photo to show it on the volunteer\'s lens, or with a voice message to show its words.',
   '/app  open the team dashboard (in a private chat with me)',
   '/sheet <link>  connect a Google Sheet (tab Volunteers: name, area)',
   '/import  add every volunteer listed in the sheet',
@@ -40,7 +40,7 @@ export const COMMANDS = {
   coordinator: [
     { command: 'team', description: 'Make this group a team' }, { command: 'run', description: 'Start a run' },
     { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' }, { command: 'join', description: 'Join with the code on your glasses' }, { command: 'interval', description: 'Check-in gap in minutes (5 to 60)' }, { command: 'clues', description: 'Set the one-tap clues on the lens' }, { command: 'voice', description: 'Voice notes with clues: on or off' },
-    { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'ask', description: 'Ask a volunteer a question' }, { command: 'app', description: 'Open the team dashboard' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
+    { command: 'reply', description: 'Send a line to a volunteer, or all' }, { command: 'ask', description: 'Ask a volunteer, or all, a question' }, { command: 'app', description: 'Open the team dashboard' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
     { command: 'end', description: 'Finish the run' },
     { command: 'coordinator', description: 'Send private notices to me' }, { command: 'help', description: 'List the commands' },
   ],
@@ -49,7 +49,7 @@ export const COMMANDS = {
 // Commands that change a run. Everyone in the group can read the board; only the coordinator or a group admin can do these.
 const COORD_ONLY = new Set(['coordinator', 'ask', 'voice', 'clues', 'interval', 'run', 'add', 'reply', 'sheet', 'import', 'end']);
 
-export function makeBot({ engine, telegram, router, joins = null, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null }) {
+export function makeBot({ engine, telegram, router, joins = null, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null, stt = null }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
 
   // Wrong join codes are counted, so a code cannot be found by trying numbers.
@@ -139,12 +139,12 @@ Anyone in this group can see this. ${how}`);
       return;
     }
     const chatId = m.chat.id;
-    // A photo can carry a command in its caption: /reply Ana look for this.
-    const text = (m.text || (m.photo && m.caption) || '').trim();
+    // A photo or voice message can carry a command in its caption: /reply Ana look for this.
+    const text = (m.text || ((m.photo || m.voice) && m.caption) || '').trim();
     const cmd = text.match(/^\/(\w+)(?:@\w+)?\s*([\s\S]*)$/);
     if (!cmd) return replyToClue(m);
     const [, name, arg] = cmd;
-    if (m.photo && name !== 'reply') return replyToClue(m);
+    if ((m.photo && name !== 'reply') || (m.voice && name !== 'reply' && name !== 'ask')) return replyToClue(m);
     const isGroup = m.chat.type === 'group' || m.chat.type === 'supergroup';
 
     if (name === 'app' || (name === 'start' && !isGroup && arg.trim() === 'app')) {
@@ -236,10 +236,14 @@ ${AI_NOTICE}` : ''}`);
     if (name === 'reply' || name === 'ask') {
       // The longest matching name wins, so "Ana Maria" is not read as "Ana".
       const v = Object.values(run.volunteers).filter((x) => namedIn(m, arg, x)).sort((a, b) => b.name.length - a.name.length)[0];
-      if (!v) return say(chatId, name === 'ask' ? 'Use: /ask <volunteer name> <question>' : 'Use: /reply <volunteer name> <text>');
-      const line = arg.slice(v.name.length + 1).trim();
+      // "all" means everyone who has joined, unless someone on the run is called All.
+      const all = !v && /^all(\s|$)/i.test(arg.trim());
+      if (!v && !all) return say(chatId, name === 'ask' ? 'Use: /ask <volunteer name> <question>, or /ask all <question>' : 'Use: /reply <volunteer name> <text>, or /reply all <text>');
+      const line = (all ? arg.trim().slice(3) : arg.slice(v.name.length + 1)).trim();
       const by = m.from.first_name || 'coordinator';
       const src = { chat: chatId, id: m.message_id };
+      if (m.voice) return lensVoice(m, run, all ? null : v, name, by, src);
+      if (all) return toEveryone(m, run, name, line, by, src);
       if (m.photo) return lensPicture(m, run, v, line, by, src);
       await (name === 'ask' ? lensAsk : lensReply)(run, v.id, line, by, src);
       return ack(m, v);
@@ -283,19 +287,65 @@ ${AI_NOTICE}` : ''}`);
   // A coordinator line for the lens. Long ones get a one-line version on the lens; the full text stays under Repeat reply.
   async function lensReply(run, volunteerId, text, by, src, picture) {
     // With no AI key the first sentence is cut to fit. The full text stays under Repeat reply.
-    const short = text.length <= 60 ? undefined : ai?.enabled ? await ai.oneLine(text) : trimLine(text);
+    const short = await shortLine(text);
     return engine.reply(run.id, { volunteerId, text, by, short, src, picture });
   }
 
-  // With a photo the name alone is enough: "/reply Ana".
-  const namedIn = (m, arg, x) => (m.photo ? `${arg} ` : arg).toLowerCase().startsWith(x.name.toLowerCase() + ' ');
+  // Everyone on the run who has joined and not signed out.
+  const joined = (run) => Object.values(run.volunteers).filter((x) => x.status === 'active');
+
+  // /reply all and /ask all: one line, photo or question for every lens on the run.
+  async function toEveryone(m, run, kind, line, by, src) {
+    const chatId = m.chat.id;
+    const quiet = { disable_notification: true };
+    const people = joined(run);
+    if (!people.length) return say(chatId, 'Nobody has joined this run yet.', quiet);
+    if (!line && !m.photo) return say(chatId, kind === 'ask' ? 'Use: /ask all <question>' : 'Use: /reply all <text>', quiet);
+    const lenses = `${people.length} lens${people.length === 1 ? '' : 'es'}`;
+    if (kind === 'ask') {
+      const answers = ai?.answers ? await ai.answers(line) : suggestAnswers(line);
+      engine.askAll(run.id, { text: line, by, answers, src });
+      await router.updateBoard(run.id);
+      return ack(m, `Asked ${lenses}. The answers are counted on the board.`);
+    }
+    let picture;
+    if (m.photo) {
+      try { picture = await telegram.download(smallest(m.photo).file_id); }
+      catch { return say(chatId, 'That photo did not reach the lenses. Send it again.', { ...quiet, reply_to_message_id: m.message_id }); }
+    }
+    const text = line || 'Sent a photo';
+    const short = await shortLine(text);
+    for (const x of people) engine.reply(run.id, { volunteerId: x.id, text, by, short, src, picture });
+    return ack(m, `Sent to ${lenses}.`);
+  }
+
+  // A coordinator's Telegram voice message: its words go to the lens as a line or a question.
+  // The coordinator is told what was heard, so a wrong word can be sent again by hand.
+  async function lensVoice(m, run, v, kind, by, src) {
+    const chatId = m.chat.id;
+    const quiet = { reply_to_message_id: m.message_id, disable_notification: true };
+    if (!stt) return say(chatId, 'Voice replies need speech to text, which is not set up on this server. Type the line instead.', quiet);
+    if ((m.voice.duration || 0) > 60) return say(chatId, 'Keep voice replies under a minute, or type the line.', quiet);
+    if (!v && !joined(run).length) return say(chatId, 'Nobody has joined this run yet.', quiet);
+    let words;
+    try { words = String(await stt.transcribeFile(await telegram.download(m.voice.file_id))).replace(/\s+/g, ' ').trim(); }
+    catch { return say(chatId, 'That voice message did not reach the lens. Send it again or type it.', quiet); }
+    if (!words) return say(chatId, 'I could not hear any words in that. Send it again or type it.', quiet);
+    if (!v) await toEveryone({ ...m, voice: undefined, photo: undefined }, run, kind, words, by, src);
+    else await (kind === 'ask' ? lensAsk : lensReply)(run, v.id, words, by, src);
+    return say(chatId, `Heard: "${words}". ${kind === 'ask' ? 'Asked' : 'Sent to'} ${v ? `${v.name}'s lens` : 'everyone'}.`, quiet);
+  }
+
+  const shortLine = async (text) => (text.length <= 60 ? undefined : ai?.enabled ? await ai.oneLine(text) : trimLine(text));
+  const smallest = (photo) => { const sizes = [...photo].sort((a, b) => a.width - b.width); return sizes.find((p) => p.width >= 288) || sizes.at(-1); };
+
+  // With a photo or voice message the name alone is enough: "/reply Ana".
+  const namedIn = (m, arg, x) => (m.photo || m.voice ? `${arg} ` : arg).toLowerCase().startsWith(x.name.toLowerCase() + ' ');
 
   // A photo for the lens. The smallest copy Telegram offers that still fills the lens is enough.
   async function lensPicture(m, run, v, caption, by, src) {
-    const sizes = [...m.photo].sort((a, b) => a.width - b.width);
-    const size = sizes.find((p) => p.width >= 288) || sizes.at(-1);
     try {
-      const picture = await telegram.download(size.file_id);
+      const picture = await telegram.download(smallest(m.photo).file_id);
       await lensReply(run, v.id, caption || 'Sent a photo', by, src, picture);
     } catch { return say(m.chat.id, `That photo did not reach ${v.name}'s lens. Send it again.`, { reply_to_message_id: m.message_id, disable_notification: true }); }
     return ack(m, v);
@@ -346,7 +396,7 @@ ${AI_NOTICE}` : ''}`);
   // A plain reply to one of the bot's clue or notice messages goes to that volunteer.
   async function replyToClue(m) {
     const ref = m.reply_to_message;
-    if (!ref || !(m.text || m.photo)) return;
+    if (!ref || !(m.text || m.photo || m.voice)) return;
     const joining = engine.findMessage(m.chat.id, ref.message_id, 'joinPrompts');
     if (joining) {
       if (!m.text) return;
@@ -358,6 +408,7 @@ ${AI_NOTICE}` : ''}`);
     if (!found) return;
     const { team, run, volunteerId: volId } = found;
     if (!(await isCoord(team, m.from?.id, m.chat.id))) return;
+    if (m.voice) return lensVoice(m, run, run.volunteers[volId], asked ? 'ask' : 'reply', m.from.first_name || 'coordinator', { chat: m.chat.id, id: m.message_id });
     if (m.photo) return lensPicture(m, run, run.volunteers[volId], String(m.caption || '').trim(), m.from.first_name || 'coordinator', { chat: m.chat.id, id: m.message_id });
     await (asked ? lensAsk : lensReply)(run, volId, m.text, m.from.first_name || 'coordinator', { chat: m.chat.id, id: m.message_id });
     return ack(m, run.volunteers[volId]);
@@ -368,7 +419,7 @@ ${AI_NOTICE}` : ''}`);
   async function ack(m, v) {
     try { await telegram.setReaction(m.chat.id, m.message_id, '👌'); }
     catch {
-      const text = `Sent to ${v.name}'s lens.`;
+      const text = typeof v === 'string' ? v : `Sent to ${v.name}'s lens.`;
       if (!(await onlyTo(m.chat.id, m.from?.id, text)).sent) await say(m.chat.id, text, { reply_to_message_id: m.message_id, disable_notification: true });
     }
   }

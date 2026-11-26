@@ -377,13 +377,13 @@ export class Engine {
 
   // A coordinator question for the lens, with answers the volunteer can send in one tap.
   // A volunteer has one open question at a time: a new one replaces it.
-  ask(runId, { volunteerId, text, by = 'coordinator', answers = [], src }) {
+  ask(runId, { volunteerId, text, by = 'coordinator', answers = [], src, group }) {
     const run = this._run(runId);
     const v = run.volunteers[volunteerId];
     if (!v) throw new Error('unknown volunteer');
     const line = String(text || '').replace(/\s+/g, ' ').trim();
     if (!line) throw new Error('empty question');
-    v.question = { id: newId('q'), text: line.slice(0, 80), by, answers: answers.slice(0, 3).map((a) => String(a).slice(0, 16)), src, at: this.clock.now(), answeredAt: null };
+    v.question = { id: newId('q'), text: line.slice(0, 80), by, answers: answers.slice(0, 3).map((a) => String(a).slice(0, 16)), src, at: this.clock.now(), answeredAt: null, group };
     this._bump(v);
     return v.question;
   }
@@ -399,8 +399,32 @@ export class Engine {
     const text = String(answer || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!text) throw new Error('empty answer');
     q.answeredAt = this.clock.now();
+    q.answer = text;
     this._bump(v);
     this._emit(run, 'coordinator', 'answer', `${v.name} (${v.area}) answered "${q.text}": ${text}`, { volunteerId: v.id, src: q.src });
+  }
+
+  // The same question for everyone on the run who has joined. A newer one replaces it.
+  askAll(runId, { text, by = 'coordinator', answers = [], src }) {
+    const run = this._run(runId);
+    const people = Object.values(run.volunteers).filter((v) => v.status === 'active');
+    if (!people.length) throw new Error('nobody joined');
+    const group = newId('all');
+    for (const v of people) this.ask(runId, { volunteerId: v.id, text, by, answers, src, group });
+    run.roll = { id: group, text: people[0].question.text, at: this.clock.now() };
+    this.changed();
+    return people;
+  }
+
+  // How the team has answered the latest question for everyone, for the board. Null once it is old.
+  rollTally(runId) {
+    const run = this._run(runId);
+    const r = run.roll;
+    if (!r || run.status !== 'active' || this.clock.now() - r.at > QUESTION_TTL_MS) return null;
+    const asked = Object.values(run.volunteers).filter((v) => v.question?.group === r.id);
+    const counts = {};
+    for (const v of asked) if (v.question.answer) counts[v.question.answer] = (counts[v.question.answer] || 0) + 1;
+    return { text: r.text, counts, waiting: asked.filter((v) => !v.question.answer).map((v) => v.name) };
   }
 
   _openQuestion(v) {

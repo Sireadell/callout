@@ -35,7 +35,10 @@ export function boardText(engine, runId) {
     const when = run.status === 'ended' ? `${v.checkins} check-in${v.checkins === 1 ? '' : 's'}` : v.status === 'signed_out' ? 'signed out' : left === null ? 'not joined' : left >= 0 ? `next check-in in ${left} min` : `${-left} min overdue`;
     return `${ICON[s.state]} ${s.name} (${s.area}) ${when}${s.battery != null ? `, glasses ${s.battery}%` : ''}`;
   });
-  return `Run: ${run.name}${run.status === 'ended' ? ' (finished)' : ''}\n${rows.join('\n') || 'No volunteers yet.'}\nTeam notices only. Not an emergency service.`;
+  const roll = engine.rollTally?.(runId);
+  const said = roll && Object.entries(roll.counts).map(([a, n]) => `${a} ${n}`);
+  const rollLine = roll ? `\nAsked everyone "${roll.text}": ${[...said, roll.waiting.length ? `no answer yet ${roll.waiting.length} (${roll.waiting.join(', ')})` : ''].filter(Boolean).join(', ')}` : '';
+  return `Run: ${run.name}${run.status === 'ended' ? ' (finished)' : ''}\n${rows.join('\n') || 'No volunteers yet.'}${rollLine}\nTeam notices only. Not an emergency service.`;
 }
 
 // The debrief as a Telegram rich message: a heading, a table of counts and two lines under it.

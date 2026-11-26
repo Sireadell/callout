@@ -8,7 +8,7 @@ I built it because people doing this work have their hands full. Phones stay in 
 
 > Has everyone on my team checked in, and if not, who and where were they last?
 
-**Measured on real Telegram: once a clue reaches the server, Telegram accepts it as a map pin in the group in about 0.65 seconds** (626, 633, 662 and 687 ms on four clues). That's the server to Telegram leg only. Glasses to phone to server comes before it and isn't counted.
+**Seen on the live server with real Telegram: a coordinator's reply reaches the lens in about 2 seconds.** That held for a button press, a typed line, a photo and a question's answer coming back. The other way, once a clue reaches the server, Telegram accepts it as a map pin in about 0.65 seconds (626, 633, 662 and 687 ms on four clues).
 
 | | |
 |---|---|
@@ -28,12 +28,14 @@ Next check-in 08:42
 
 A1
 
-Team 5/6 checked in ━ Saturday round
+Team 5/6 checked in | Saturday round
 
 Tap: check in. Hold: talk. Double: exit.
 ```
 
-Ana taps the ring to check in. Nobody answers at number 14, so she picks the quick clue "No answer" from the menu. It lands in the group as a map pin with reply buttons. Maria presses "Move to your next area", it shows on Ana's lens, and Ana taps once for "got it". When Maria asks "How many people inside?", Ana answers with one tap. When Ana isn't sure which door is 14, Maria replies with a photo of it, and it shows on Ana's lens.
+Ana taps the ring to check in. Nobody answers at number 14, so she picks the quick clue "No answer" from the menu. It lands in the group as a map pin with reply buttons. Maria presses "Move to your next area", it shows on Ana's lens, and Ana taps once for "got it". When Maria asks "How many people inside?", Ana answers with one tap. When Ana isn't sure which door is 14, Maria replies with a photo of it, and it shows on Ana's lens. Busy with a phone call, Maria answers the next clue with a Telegram voice message instead, and Ana reads its words.
+
+When the rain gets heavy, Maria sends `/ask all Are you OK?`. Every lens gets the question with one-tap answers, and the pinned board keeps count: "Yes 4, No 1, no answer yet 1 (Ben)". She can see who to call first. `/reply all Come back to the hall` reaches every lens at once.
 
 Ben misses a check-in (due every 15 minutes by default). At 17 minutes Maria gets his last position and a "Reached them, mark OK" button. At 22 minutes the whole team is told. At `/end`, everyone's counts go to the group as a table (and to Discord and a Google Sheet if set up), with a short summary if AI is on.
 
@@ -56,11 +58,11 @@ npm test
 | Command | What it shows | Result today |
 |---|---|---|
 | `npm run proof` | A full run on a fake Telegram chat: pairing, clue pin, reply, notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, clean-up | 23 of 23 checks pass, 36 messages sent |
-| `npm test` | Server tests, with a fake clock so timers run in milliseconds | 177 of 177 pass |
+| `npm test` | Server tests, with a fake clock so timers run in milliseconds | 187 of 187 pass |
 | `cd glasses; npm install; npm test` | The lens app against fake glasses and a fake server | 63 of 63 pass |
 | `npm ci --prefix glasses; npm run panel:proof` | The real lens app against a local server, with fake glasses input and a fake Telegram | All checks pass |
 
-GitHub Actions runs all four on each push. The glasses app is on Even Hub as a private beta (0.1.0), with 3 testers invited. None had accepted when I last checked, so nobody has run it on real glasses yet. That beta holds the 25 November build, not the lens changes below.
+GitHub Actions runs all four on each push. The glasses app is on Even Hub as a private beta (0.2.1, the current lens app), with 3 testers invited. None had accepted when I last checked, so nobody has run it on real glasses yet.
 
 The server uses one outside package, an MP3 encoder for voice notes. Everything else is plain Node.
 
@@ -69,8 +71,8 @@ The server uses one outside package, an MP3 encoder for voice notes. Everything 
 | Judging line | Where you see it |
 |---|---|
 | "Usefulness on G2 · 30%. Solves a real everyday moment, works at a glance and hands-free." | The check-in on a field shift. At a glance: countdown, area, team count. Hands-free: hold to talk, and a due check-in listens for "OK" |
-| "Read and write · 25%. Acting is fast: a short phrase, one tap or the ring, with smart defaults or AI drafts instead of long dictation." | Judged first. Read: the reply as one line, a photo from the coordinator, and questions with up to 3 one-tap answers. Write: one tap checks in, picks a quick clue or says "got it". Or hold, speak, let go, and the team can hear the clue as a voice note if the coordinator turned them on. The coordinator answers with 4 buttons, up to 2 AI suggestions, a reaction, a line or a photo |
-| "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram, and a page a judge can try with no glasses. 177 server tests, 63 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
+| "Read and write · 25%. Acting is fast: a short phrase, one tap or the ring, with smart defaults or AI drafts instead of long dictation." | Judged first. Read: the reply as one line, a photo from the coordinator, and questions with up to 3 one-tap answers. Write: one tap checks in, picks a quick clue or says "got it". Or hold, speak, let go, and the team can hear the clue as a voice note if the coordinator turned them on. The coordinator answers with 4 buttons, up to 2 AI suggestions, a reaction, a line, a photo or a voice message, to one person or to everyone |
+| "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram, and a page a judge can try with no glasses. 187 server tests, 63 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
 | "UX for display and voice · 15%. Clear on a 576 × 288 monochrome display, natural by voice." | A bright main line, a dim status line and a dim hint, each with a line limit. Plain glyphs (● ○ ▲), since the lens drops emoji. Every gesture gets an answer on screen |
 | "Business potential and safety · 10%. Real users and demand, careful with data and money." | Team notices only, not an emergency service. "I'm not OK" never checks in. Only the coordinator can act. No position kept after a run, keys only as hashes, the run notice says what goes to the AI. No real users yet, buyers are a guess |
 
@@ -102,6 +104,8 @@ Of Telegram's accounts, bots, channels and Mini Apps, Callout uses a bot and a M
 | Clues and backup requests as map pins with reply buttons, "Ask a question" and up to 2 "AI:" suggestions. Mark OK green, Check in blue | `sendVenue`, inline keyboard, button `style` |
 | Live location (stopped at the end), a topic per run, a photo under its clue | `editMessageLiveLocation`, `createForumTopic`, `sendPhoto` |
 | The coordinator replies with a photo and it shows on the lens | `getFile` |
+| The coordinator replies with a voice message: its words show on the lens, and the bot answers with what it heard so a wrong word can be fixed | `getFile`, speech to text |
+| `/reply all` and `/ask all` reach every lens on the run. The pinned board counts the answers and names who hasn't answered | `editMessageText` |
 | `/voice on`: a spoken clue's recording as a voice message under the clue, protected and removed by `/end clear`. Off by default | `sendVoice` |
 | Check-ins quiet, missed ones buzz, positions can't be forwarded | `disable_notification`, `protect_content` |
 | Thumbs up shows "Seen" on the lens, OK hand "OK", heart "Thanks". The bot reacts once a reply is seen | `message_reaction`, `setMessageReaction` |
@@ -134,8 +138,9 @@ What goes to the AI service, only if a key is set (Claude or OpenRouter): clue w
 | Mark OK, private nudges, backup, eyes reaction, `/interval` | [review.test.js](test/review.test.js) | Tested, seen on real Telegram |
 | No position kept after a run, keys and codes only as hashes | `npm run proof`, [engine.test.js](test/engine.test.js) | Tested. The live Sheet copy, read after a run: 0 coordinate-shaped numbers, no raw keys or codes |
 | "I'm not OK", "no" and "help" never check in; backup never sent by voice alone | [voice.test.js](glasses/test/voice.test.js), [intent.test.js](test/intent.test.js) | Tested. Live by voice for "I am not OK" only (see below) |
-| Hold to talk, three-box lens, quick clues per run, one-tap answers, 4 digit join | [glasses/test](glasses/test), [ask.test.js](test/ask.test.js), [join.test.js](test/join.test.js) | Tested, and in the simulator against a local copy of the server. Questions and answers not live yet |
-| Replies pushed by a held request, `/status` timings | [longpoll.test.js](test/longpoll.test.js) | Tested with fakes. Deployed, but no reply has reached a lens through it live yet |
+| Hold to talk, three-box lens, quick clues per run, one-tap answers, 4 digit join | [glasses/test](glasses/test), [ask.test.js](test/ask.test.js), [join.test.js](test/join.test.js) | Tested. Live: `/ask` to Ben, "No" tapped on his lens, the answer under the question in about 2 seconds |
+| Replies pushed by a held request, `/status` timings | [longpoll.test.js](test/longpoll.test.js) | Tested. Live: a button press, a typed reply and a photo each reached the lens in about 2 seconds |
+| `/reply all`, `/ask all` with a count on the board, voice message replies | [everyone.test.js](test/everyone.test.js), [stt.test.js](test/stt.test.js) | Tested with fakes. Not live yet |
 | One-person messages, AI suggestions, button colours, table debrief, two teams, app-closed notice | [private.test.js](test/private.test.js), [drafts.test.js](test/drafts.test.js), [debrief.test.js](test/debrief.test.js), [closed.test.js](test/closed.test.js) | Tested. Seen live: a code shown "Only visible to you" and AI buttons appearing (never pressed). The rest fake Telegram only |
 | Offline queue keeps its own time (30 minute cap, never the future) | [review.test.js](test/review.test.js) | Tested in code. No real signal loss yet |
 | `/end clear` | [review.test.js](test/review.test.js) | Fake Telegram only |
@@ -152,17 +157,19 @@ With my own bot and group I saw the admin link, topics, board, clue pins, photos
 
 On 25 and 26 November I tested the live server in a real Telegram group, with my own accounts and two Even Hub simulators. No real glasses and no other people. Ana (A1) and Ben (A2) paired with a 5 minute gap. Ana checked in by tap and sent the quick clue "Road blocked", which reached the topic with four reply buttons but no map pin (the simulator gives no location). My second account's button press got "Only the coordinator can do that". The coordinator's press showed on Ana's lens, her "got it" posted Ana saw: "Move to your next area", and Repeat reply brought it back. Ben's missed check-in notice posted at 2 minutes overdue; Mark OK edited it. `/end` posted the counts (Ana 5 check-ins, 0 missed; Ben 1 check-in, 1 missed, marked OK once; 1 clue), the AI summary and the Sheet debrief (2 people, 1 clue), and closed the topic. It used the earlier lens.
 
+On 26 November I ran a full round, "Mill Lane", on the live server with the current lens app in two simulators. Ana and Ben paired and the lens showed "Team 2/2 checked in | Mill Lane". Ana's quick clue "Access blocked" posted with 7 buttons, 2 of them AI. "Move to your next area", a typed "Try the side gate" and a photo of door 14 each reached her lens in about 2 seconds, and her "got it" showed as an eyes reaction. `/ask` reached Ben and his "No" came back under the question. A long pause gave both missed check-in notices and Ben's "still no check-in" at 7 minutes. `/end` posted the table (Ana 4 check-ins and 1 missed; Ben 0 and 1 missed, marked OK) and the summary. In a second short run, after the PC locked, the group saw "gone quiet for 3 minutes" and then "back online".
+
 ## Bugs the live test found
 
-All six are fixed and tested: the board posted three times when notices came together; turning on Topics changed the group's id and the bot lost its team; an empty field was sent as "undefined" and a photo failed; a dropped connection lost the message (about 1 send in 8 on my Wi-Fi), so the server retries once; `/import` after adding someone by hand listed them twice (5 people, not 3; a live re-check counted 3); and the AI summary said "10-minute" while the counts said 9.
+All seven are fixed and tested: the board posted three times when notices came together; turning on Topics changed the group's id and the bot lost its team; an empty field was sent as "undefined" and a photo failed; a dropped connection lost the message (about 1 send in 8 on my Wi-Fi), so the server retries once; `/import` after adding someone by hand listed them twice (5 people, not 3; a live re-check counted 3); the AI summary said "10-minute" while the counts said 9; and after any lens menu pick the simulator sends an exit, so "Ask team for backup" closed itself and the group was told the app had closed. Callout now ignores an exit that comes right after a menu pick.
 
 ## Not yet checked live, and known gaps
 
 | Part | Where it stands |
 |---|---|
-| Voice | 26 November, live server, simulator, PC microphone, phrases played by the computer's voice (not a person, not real glasses), hold to talk: "The bridge on Mill Lane is flooded" came back word for word and posted with reply and AI buttons. "I am OK" checked in and "I am not OK" didn't. "House empty" was first heard as "Margin. Only house empty." and posted as a free clue, then matched on the second try. Not tried: spoken "backup" and "cancel", the "OK" on an overdue check-in, a human voice, the glasses mic |
-| New in this version | Apart from voice, the one-person code, AI buttons, the `/run` AI notice, the photo to the lens and voice notes: fakes, simulator or browser only |
-| App closed | The simulator sends no exit event, so fake glasses only. Unknown whether the notice leaves a real phone |
+| Voice | 26 November, live server, simulator, PC microphone, phrases played by the computer's voice (not a person, not real glasses), hold to talk: "The bridge on Mill Lane is flooded" came back word for word and posted with reply and AI buttons. "I am OK" checked in and "I am not OK" didn't. "House empty" was first heard as "Margin. Only house empty." and posted as a free clue, then matched on the second try. A second live run played 5 recorded phrases: all came back right in 3 to 4 seconds, "I don't need backup" stayed a clue, and a spoken "I'm okay" cleared a due check-in. Not tried: a human voice, the glasses mic |
+| New in this version | `/reply all`, `/ask all` and voice message replies: fakes only so far |
+| App closed | The simulator only sends an exit right after a menu pick, which Callout ignores. Fake glasses only. Unknown whether the notice leaves a real phone |
 | Discord | A webhook notice reached a real channel in 1 second. Reply buttons with fakes only |
 | AI | Ran for real through OpenRouter (Claude Haiku): one line in 2.1 s, a summary in 2.6 s, AI buttons seen appearing under a live clue, never pressed. Answer choices not yet |
 | Mini App | On the live server. Not opened inside Telegram yet |
@@ -187,7 +194,7 @@ Pins and notices with coordinates stay in the group, protected from forwarding, 
 
 Sign-in keys and pairing codes are only ever stored as one-way hashes. If your host wipes its disk on restart, `STATE_SHEET_ID` keeps a private copy of the state in your own Google Sheet, written after each pairing, check-in or run end. It never has a position, even during a run, but it holds names, areas and Telegram chat ids, so keep it private.
 
-With a speech to text key, the provider deletes the transcript once the words come back. Photos go straight to the group. With `/voice on`, a spoken clue's recording goes to the group too. The group is told when it is turned on, and the volunteer's confirm screen says the recording goes with the clue. A photo the coordinator sends to a lens stays in the server's memory for 15 minutes, or until the run ends, so the lens can fetch it. The server never saves photos or recordings. Pairing codes work once and expire after 15 minutes, join codes after 10.
+With a speech to text key, the provider deletes the transcript once the words come back. That covers the volunteer's spoken clues and the coordinator's voice message replies. A coordinator's voice message stays in the group as they sent it. Photos go straight to the group. With `/voice on`, a spoken clue's recording goes to the group too. The group is told when it is turned on, and the volunteer's confirm screen says the recording goes with the clue. A photo the coordinator sends to a lens stays in the server's memory for 15 minutes, or until the run ends, so the lens can fetch it. The server never saves photos or recordings. Pairing codes work once and expire after 15 minutes, join codes after 10.
 
 ## Who would pay (not validated)
 

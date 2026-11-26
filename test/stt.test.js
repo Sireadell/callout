@@ -57,3 +57,18 @@ test('the transcript is deleted at the provider once we have the words', async (
   await makeStt({ apiKey: 'k', fetchImpl, sleep: async () => {} }).transcribe(Buffer.alloc(64000));
   assert.ok(methods.includes('DELETE transcript/t9'));
 });
+
+test('a Telegram voice file is uploaded as it is, with no WAV header added', async () => {
+  const bodies = [];
+  const fetchImpl = async (url, opts = {}) => {
+    if (url.endsWith('/upload')) { bodies.push(opts.body); return json({ upload_url: 'https://cdn/x' }); }
+    if (url.endsWith('/transcript')) return json({ id: 't2' });
+    if (opts.method === 'DELETE') return json({});
+    return json({ status: 'completed', text: ' Go to the hall ' });
+  };
+  const stt = makeStt({ apiKey: 'k', fetchImpl, sleep: async () => {} });
+  const ogg = Buffer.from('OggS fake voice');
+  assert.equal(await stt.transcribeFile(ogg), 'Go to the hall');
+  assert.equal(bodies[0], ogg);
+  await assert.rejects(() => makeStt({}).transcribeFile(ogg), /not set up/);
+});
