@@ -151,12 +151,12 @@ export class Engine {
     } else if (!still) v.flags.still = false;
   }
 
-  clue(token, { text, pos, voiceNoteId = null, photoId = null, at = undefined }) {
+  clue(token, { text, pos, photoId = null, at = undefined }) {
     const { run, v } = this._auth(token);
     this._touch(v, pos);
     const madeAt = this._when({ lastCheckin: 0 }, at);
     const lateMin = mins(this.clock.now() - madeAt);
-    const clue = { id: newId('clue'), volunteerId: v.id, text: String(text || '').slice(0, 500), pos: v.pos, voiceNoteId, photoId, at: madeAt };
+    const clue = { id: newId('clue'), volunteerId: v.id, text: String(text || '').slice(0, 500), pos: v.pos, photoId, at: madeAt };
     run.clues.push(clue);
     this._emit(run, 'team', 'clue', `${v.name} (${v.area}): ${clue.text}${lateMin >= 1 ? ` (sent ${lateMin} min late)` : ''} [${place(clue.pos)}]`, {
       volunteerId: v.id, clueId: clue.id, clueText: clue.text, who: `${v.name} (${v.area})${lateMin >= 1 ? `, sent ${lateMin} min late` : ''}`, pos: clue.pos,
