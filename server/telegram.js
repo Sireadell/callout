@@ -58,6 +58,9 @@ export class Telegram {
   edit(chatId, messageId, text, extra = {}) {
     return this._queued(chatId, () => this.call('editMessageText', { chat_id: chatId, message_id: messageId, text: text.slice(0, 4000), ...extra }));
   }
+  editButtons(chatId, messageId, reply_markup) {
+    return this._queued(chatId, () => this.call('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, reply_markup }));
+  }
   // Live location with no end time, so it keeps moving until we stop it. Heading is 1 to 360 degrees.
   sendLiveLocation(chatId, lat, lng, extra = {}) {
     return this._queued(chatId, () => this.call('sendLocation', { chat_id: chatId, latitude: lat, longitude: lng, live_period: 0x7FFFFFFF, ...extra }));

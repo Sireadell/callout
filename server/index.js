@@ -25,11 +25,11 @@ const discord = new Discord({ botToken: process.env.DISCORD_BOT_TOKEN || null })
 // Dev only: shorten the timers (in seconds) so the notice steps can be seen in a minute or two.
 const secs = (k, d) => (process.env.CALLOUT_DEV === "1" && process.env[k] ? Number(process.env[k]) * 1000 : d);
 const engine = new Engine({ config: { checkinMs: secs("DEV_CHECKIN_S", 15 * 60_000), coordinatorGraceMs: secs("DEV_GRACE1_S", 2 * 60_000), teamGraceMs: secs("DEV_GRACE2_S", 5 * 60_000), silentMs: secs("DEV_SILENT_S", 3 * 60_000) } });
-const router = makeRouter({ engine, telegram, discord });
-engine.notify = router.notify;
 if (fs.existsSync(STATE)) engine.restore(JSON.parse(fs.readFileSync(STATE, 'utf8')));
 let bot = null;
 const ai = makeAi({ anthropicKey: process.env.ANTHROPIC_API_KEY, openrouterKey: process.env.OPENROUTER_API_KEY, openrouterModel: process.env.OPENROUTER_MODEL || undefined });
+const router = makeRouter({ engine, telegram, discord, ai });
+engine.notify = router.notify;
 const sheet = process.env.GOOGLE_SERVICE_ACCOUNT_FILE && fs.existsSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE)
   ? makeSheet({ serviceAccount: JSON.parse(fs.readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE, 'utf8')) }) : null;
 // A host that wipes its disk on restart: pick the state back up from the Sheet copy (no positions).

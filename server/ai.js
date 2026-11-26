@@ -4,6 +4,7 @@ const SYSTEM_LINE = 'Rewrite the message as one plain line of at most 60 charact
 const SYSTEM_DEBRIEF = 'Summarise a volunteer search run in at most 3 short plain sentences from the facts given. State only what the facts say. Do not guess, diagnose or give advice. Reply with the sentences only.';
 
 const SYSTEM_ANSWERS = 'A team coordinator asks a field volunteer a question. Give 3 short answers the volunteer could send, one per line, each at most 16 characters. Plain words, no numbering, no emoji, no medical or emergency wording. Reply with the lines only.';
+const SYSTEM_DRAFTS = 'A field volunteer sent a short report to the team coordinator. Suggest 2 short replies the coordinator could send back, one per line, each at most 40 characters. Plain words: an acknowledgement or a practical next step or question. No promises about help arriving, no medical or emergency wording, no emoji, no numbering. Reply with the lines only.';
 // Words an AI suggestion may never contain: nothing that sounds like rescue, dispatch or a medical judgement.
 export const UNSAFE = /\b(sos|911|999|112|emergency|ambulance|rescu\w*|dispatch\w*|diagnos\w*|help is coming|on the way to save|dead|dying|injur\w*|unconscious|safe now|you are safe)\b/i;
 
@@ -91,6 +92,11 @@ export function makeAi({ anthropicKey, openrouterKey, openrouterModel = 'anthrop
       if (ruled) return ruled;
       try { const lines = cleanLines(await ask(SYSTEM_ANSWERS, String(question).slice(0, 300), 60), 16, 3); if (lines.length >= 2) return lines; } catch { /* fall back */ }
       return [...OPEN_ANSWERS];
+    },
+    // Up to 2 reply suggestions for the coordinator. An empty list leaves just the fixed buttons.
+    async drafts(clue) {
+      if (!clue) return [];
+      try { return cleanLines(await ask(SYSTEM_DRAFTS, String(clue).slice(0, 500), 80), 40, 2); } catch { return []; }
     },
     // Debrief paragraph. Returns '' when no key or on failure: the debrief still goes out without it.
     async debrief(d) {

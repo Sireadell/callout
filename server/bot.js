@@ -24,7 +24,7 @@ const HELP = [
 ].join('\n');
 
 // Said when a run starts on a server with an AI key.
-export const AI_NOTICE = 'AI is on: clue words are sent to an AI service to write the summary, long coordinator replies to shorten them, and some coordinator questions to suggest answers. Volunteer names and positions are not added.';
+export const AI_NOTICE = 'AI is on: clue words are sent to an AI service to suggest replies and write the summary, long coordinator replies to shorten them, and some coordinator questions to suggest answers. Volunteer names and positions are not added.';
 
 // What the bot needs as a group admin, and why.
 const RIGHTS = [
@@ -388,6 +388,12 @@ ${AI_NOTICE}` : ''}`);
       if (!(await isCoord(team, q.from?.id, chat))) return telegram.answerCallback(q.id, 'Only the coordinator can do that');
       if (kind === 'r' && PRESETS[Number(idx)]) {
         engine.reply(run.id, { volunteerId: v.id, text: PRESETS[Number(idx)], by: q.from.first_name || 'coordinator' });
+        return telegram.answerCallback(q.id, `Sent to ${v.name}`);
+      }
+      if (kind === 'd') {
+        const draft = run.drafts?.[`${chat}:${q.message?.message_id}`]?.[Number(idx)];
+        if (!draft) return telegram.answerCallback(q.id, 'Not available');
+        engine.reply(run.id, { volunteerId: v.id, text: draft, by: q.from.first_name || 'coordinator' });
         return telegram.answerCallback(q.id, `Sent to ${v.name}`);
       }
       if (kind === 'a') {

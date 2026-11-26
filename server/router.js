@@ -38,7 +38,7 @@ export function boardText(engine, runId) {
   return `Run: ${run.name}${run.status === 'ended' ? ' (finished)' : ''}\n${rows.join('\n') || 'No volunteers yet.'}\nTeam notices only. Not an emergency service.`;
 }
 
-export function makeRouter({ engine, telegram = null, discord = null, log = console.error }) {
+export function makeRouter({ engine, telegram = null, discord = null, ai = null, log = console.error }) {
   const keyboardFor = (n) => {
     if (n.kind === 'nudge_overdue') return { inline_keyboard: [[{ text: 'Check in', style: 'primary', callback_data: `ci|${n.volunteerId}` }]] };
     if (['clue', 'answer', 'missed_checkin', 'went_silent', 'app_closed', 'need_backup', 'missed_checkin_team'].includes(n.kind)) {
@@ -49,6 +49,18 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
     }
     return undefined;
   };
+
+  // AI reply suggestions are added under a clue's fixed buttons once they are ready, so the clue never
+  // waits for them. They are only ever offered on clues, never on safety notices.
+  async function addDrafts(run, chat, messageId, n) {
+    if (!ai?.enabled || !ai.drafts || !telegram.editButtons) return;
+    const drafts = (await ai.drafts(n.clueText)).filter((d) => !PRESETS.includes(d));
+    if (!drafts.length || run.status !== 'active') return;
+    (run.drafts ||= {})[`${chat}:${messageId}`] = drafts;
+    const rows = keyboardFor(n).inline_keyboard;
+    const extra = drafts.map((d, i) => [{ text: `AI: ${d}`, callback_data: `d|${n.volunteerId}|${i}` }]);
+    await telegram.editButtons(chat, messageId, { inline_keyboard: [...rows.slice(0, PRESETS.length), ...extra, ...rows.slice(PRESETS.length)] });
+  }
 
   // One forum topic per run, if the group is a forum. If not, everything stays in the main chat.
   async function ensureTopic(run, team) {
@@ -110,6 +122,7 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
     if (run && n.volunteerId) (run.msgIndex ||= {})[`${chat}:${sent.message_id}`] = n.volunteerId;
     if (run && POS_KINDS.has(n.kind)) (run.posMsgs ||= []).push([chat, sent.message_id]);
     if (run && (n.kind === 'clue' || n.kind === 'need_backup')) (run.clueMsg ||= {})[`${chat}:${n.clueId}`] = sent.message_id;
+    if (run && n.kind === 'clue') addDrafts(run, chat, sent.message_id, n).catch((e) => log('drafts failed:', e.message));
     if (run && n.kind === 'debrief') await stopLive(run.id);
   }
 
