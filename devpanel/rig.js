@@ -12,6 +12,13 @@ const TOKEN = '0:devpanel';
 export const GROUP = -1001;
 export const COORDINATOR = { id: 7, first_name: 'Sam' };
 
+// The words in one Telegram call. A rich message (the debrief table) becomes one line per block or table row.
+export function textOf(m) {
+  const blocks = m.body.rich_message?.blocks;
+  if (blocks) return blocks.flatMap((b) => (b.cells ? b.cells.map((row) => row.map((c) => c.text).join(' | ')) : [b.text])).join('\n');
+  return m.body.text || m.body.caption || (m.body.title ? `${m.body.title} (${m.body.address})` : '');
+}
+
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function until(fn, { ms = 30_000, step = 200 } = {}) {
   const end = performance.now() + ms;
@@ -50,7 +57,6 @@ export async function startRig({ port = 8788, silentSeconds = 20, onServerLine =
     if (!r.ok) throw new Error(`webhook ${r.status}`);
   };
   const realFetch = globalThis.fetch;
-  const textOf = (m) => m.body.text || m.body.caption || (m.body.title ? `${m.body.title} (${m.body.address})` : '');
   const find = (re, from = 0) => sent.slice(from).find((m) => re.test(textOf(m)));
   const say = (text) => update({ message: { message_id: ++messageId, chat: { id: GROUP, type: 'supergroup', title: 'Practice team' }, from: COORDINATOR, text } });
   const press = (messageIdPressed, data) => update({ callback_query: { id: `q${++updateId}`, data, from: COORDINATOR, message: { message_id: messageIdPressed, chat: { id: GROUP } } } });

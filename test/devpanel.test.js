@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeFakeFetch } from '../devpanel/fake-telegram.js';
+import { textOf } from '../devpanel/rig.js';
 import { Telegram } from '../server/telegram.js';
 
 test('the dev panel answers Telegram calls on this computer and reports them', async () => {
@@ -25,4 +26,11 @@ test('the dev panel lets local calls through and blocks every other outside addr
   await assert.rejects(fetchImpl('https://discord.com/api/v10/channels/1/messages'), /blocks outside address/);
   await assert.rejects(fetchImpl('https://api.openrouter.ai/x'), /blocks outside address/);
   assert.equal(real.length, 1);
+});
+
+test('the dev panel reads the words out of plain messages, pins and table messages', () => {
+  assert.equal(textOf({ body: { text: 'Hello' } }), 'Hello');
+  assert.equal(textOf({ body: { title: 'Road blocked', address: 'Ana' } }), 'Road blocked (Ana)');
+  const blocks = [{ type: 'heading', text: 'Run finished' }, { type: 'table', cells: [[{ text: 'Ana' }, { text: 'A1' }]] }, { type: 'paragraph', text: '1 clue(s)' }];
+  assert.equal(textOf({ body: { rich_message: { blocks } } }), 'Run finished\nAna | A1\n1 clue(s)');
 });

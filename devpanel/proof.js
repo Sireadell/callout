@@ -101,7 +101,7 @@ try {
   await rig.say('/end clear');
   const debrief = await seen(/finished after/, from, 45_000);
   check('/end clear posts the debrief', Boolean(debrief));
-  check('the check-in kept while there was no signal is counted in the debrief', /Ana \(Area A1\): 1 check-ins/.test(debrief ? textOf(debrief) : ''));
+  check('the check-in kept while there was no signal is counted in the debrief', /Ana \(Area A1\): 1 check-ins|Ana \| Area A1 \| 1 \|/.test(debrief ? textOf(debrief) : ''));
   const deleted = await until(() => sent.slice(from).some((m) => m.method === 'deleteMessage' && m.messageId === pin?.messageId), { ms: 45_000 });
   check('/end clear asks Telegram to delete the messages that showed a position', Boolean(deleted));
   log(`  ${sent.slice(from).filter((m) => m.method === 'deleteMessage').length} delete requests`);
