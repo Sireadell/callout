@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeStillness } from '../src/motion.js';
-import { stillText } from '../src/view.js';
+import { stillScreen } from '../src/view.js';
 
 test('still only after samples, and only after the set time with no movement', () => {
   let t = 0;
@@ -29,7 +29,8 @@ test('real movement resets the clock; bad samples are ignored', () => {
 });
 
 test('the still prompt is a question and carries no health words', () => {
-  const t = stillText(1);
+  const sc = stillScreen(1);
+  const t = [...sc.main, sc.hint].join(' ');
   assert.match(t, /Still there\?/);
   assert.doesNotMatch(t, /SOS|emergency|danger|injur|unconscious|\p{Extended_Pictographic}/u);
 });

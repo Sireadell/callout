@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { glanceText, fmtClock, MENU, PRESET_CLUES, confirmText, listenText, isOk, okText } from '../src/view.js';
+import { glanceView, view, fit, BOXES, COLS, fmtClock, MENU, PRESET_CLUES, confirmScreen, listenScreen, holdScreen, thinkScreen, isOk, okScreen, stillScreen, backupScreen } from '../src/view.js';
+
+const all = (v) => Object.values(v).join(' ');
+const glanceText = (state, now) => all(glanceView(state, now));
+const textOf = (sc) => [...sc.main, sc.hint].join(' ');
 
 test('clock formats and goes negative', () => {
   assert.equal(fmtClock(125000), '02:05');
@@ -14,9 +18,48 @@ test('overdue shows a warning glyph, no emoji, no alarm words', () => {
   assert.match(t, /▲ OVERDUE/);
   assert.doesNotMatch(t, /SOS|emergency|\p{Extended_Pictographic}/u);
 });
-test('text stays under the container limit', () => {
-  const t = glanceText({ token: 't', syncedAt: 0, flash: 'x'.repeat(2000), sync: { runName: 'E', area: 'A', dueInMs: 1000, team: [] } }, 0);
-  assert.ok(t.length <= 900);
+const fits = (v) => BOXES.forEach((b) => {
+  const lines = v[b.key].split('\n');
+  assert.ok(lines.length <= b.lines, `${b.key} has ${lines.length} lines`);
+  lines.forEach((l) => assert.ok(l.length <= COLS, `${b.key} line too wide: ${l}`));
+});
+
+test('worst case: every box stays inside its line cap', () => {
+  const long = 'word '.repeat(400);
+  const state = {
+    token: 't', syncedAt: 0, flash: long, queue: Array(20).fill({}), device: { batteryLevel: 3 },
+    reply: { id: 'r', by: long, text: long, tappable: true },
+    sync: { runName: long, area: long, dueInMs: -1000, team: Array(30).fill({ state: 'ok' }) },
+  };
+  fits(glanceView(state, 60000));
+  fits(glanceView({ ...state, reply: null }, 60000));
+  fits(glanceView({ ...state, reply: null, flash: '' }, 60000));
+  [confirmScreen(long, 3), confirmScreen('x'.repeat(2000), 3), listenScreen(4), holdScreen(), thinkScreen(), okScreen(1), stillScreen(3), backupScreen()]
+    .forEach((screen) => fits(view({ ...state, mode: 'x', screen, flash: '' }, 60000)));
+  const v = glanceView(state, 60000);
+  assert.match(v.main, /^▲ OVERDUE/);
+  assert.match(v.main, /word/);
+});
+
+test('a reply takes the main box and the countdown moves underneath', () => {
+  const state = { token: 't', syncedAt: 0, reply: { id: 'r', by: 'Sam', text: 'Return to base', tappable: true }, sync: { runName: 'E', area: 'A1', dueInMs: 60000, team: [] } };
+  const v = glanceView(state, 0);
+  assert.equal(v.main, 'Sam: Return to base');
+  assert.match(v.status, /Next check-in 01:00/);
+  assert.match(v.hint, /got it/);
+  assert.match(glanceView({ ...state, reply: null }, 0).main, /^Next check-in 01:00\n\nA1/);
+});
+
+test('exactly one box takes input and the boxes do not overlap', () => {
+  assert.equal(BOXES.filter((b) => b.capture === 1).length, 1);
+  BOXES.slice(1).forEach((b, i) => assert.ok(b.y >= BOXES[i].y + BOXES[i].height));
+  assert.ok(BOXES.at(-1).y + BOXES.at(-1).height <= 288);
+  BOXES.forEach((b) => assert.ok(b.brightness >= 0 && b.brightness <= 4));
+});
+
+test('fit says when it cuts', () => {
+  assert.match(fit(['a '.repeat(200)], 2), /\.\.\.$/);
+  assert.equal(fit(['short'], 2), 'short');
 });
 test('menu fits the 10 item and 32 byte limits', () => {
   assert.ok(MENU.length <= 10);
@@ -26,11 +69,11 @@ test('menu fits the 10 item and 32 byte limits', () => {
 test('quick clues fit the list limits and screens have no emoji or alarm words', () => {
   assert.ok(PRESET_CLUES.length <= 20);
   PRESET_CLUES.forEach((c) => assert.ok(Buffer.byteLength(c) <= 64));
-  const all = [confirmText('Road blocked', 3), listenText(4), ...PRESET_CLUES].join(' ');
-  assert.doesNotMatch(all, /SOS|emergency|\p{Extended_Pictographic}/u);
+  const words = [textOf(confirmScreen('Road blocked', 3)), textOf(listenScreen(4)), textOf(holdScreen()), ...PRESET_CLUES].join(' ');
+  assert.doesNotMatch(words, /SOS|emergency|\p{Extended_Pictographic}/u);
 });
 test('a long spoken clue is cut to fit the lens', () => {
-  assert.ok(confirmText('x'.repeat(2000), 3).length < 450);
+  assert.ok(textOf(confirmScreen('x'.repeat(2000), 3)).length < 320);
 });
 
 test('low battery and no signal show on the lens, plain glyphs only', () => {
@@ -44,7 +87,7 @@ test('low battery and no signal show on the lens, plain glyphs only', () => {
 test('spoken OK accepts short answers only', () => {
   ['OK', 'Okay.', 'ok I am here', 'all good', 'Checking in'].forEach((t) => assert.ok(isOk(t), t));
   ['', 'Person inside', 'I think we should go back to the road and check it is okay for everyone'].forEach((t) => assert.ok(!isOk(t), t));
-  assert.doesNotMatch(okText(1), /SOS|emergency|\p{Extended_Pictographic}/u);
+  assert.doesNotMatch(textOf(okScreen(1)), /SOS|emergency|\p{Extended_Pictographic}/u);
 });
 
 test('menu offers backup and sign out, and no longer says End run', async () => {
@@ -58,10 +101,9 @@ test('after the run ends the lens says so instead of "No signal"', async () => {
   assert.doesNotMatch(glanceText({ ended: true }), /No signal/);
 });
 test('backup and reply screens use team words, no alarm words', async () => {
-  const { backupText, replyText } = await import('../src/view.js');
-  const all = [backupText(), replyText({ by: 'Sam', text: 'Return to base' })].join(' ');
-  assert.match(all, /Sam: Return to base/);
-  assert.doesNotMatch(all, /SOS|emergency|urgent|help is coming|\p{Extended_Pictographic}/u);
+  const text = [textOf(backupScreen()), glanceText({ token: 't', syncedAt: 0, reply: { by: 'Sam', text: 'Return to base' }, sync: { runName: 'E', area: 'A', dueInMs: 1000, team: [] } }, 0)].join(' ');
+  assert.match(text, /Sam: Return to base/);
+  assert.doesNotMatch(text, /SOS|emergency|urgent|help is coming|\p{Extended_Pictographic}/u);
 });
 
 test('the lens says how many items wait for signal', () => {

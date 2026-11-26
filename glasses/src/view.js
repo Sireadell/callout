@@ -1,4 +1,48 @@
 // Pure screen text for the lenses. No emoji: the lens drops them. Glyphs used: ● ○ ▲ ━
+//
+// Every screen is three text boxes: a bright main box, a dim status box and a dimmer hint line.
+// Each box is wrapped and cut here, so nothing ever runs off the lens.
+export const COLS = 44;
+export const BOXES = [
+  { id: 1, name: 'main', key: 'main', y: 0, height: 180, lines: 6, brightness: 4, capture: 1 },
+  { id: 2, name: 'status', key: 'status', y: 184, height: 62, lines: 2, brightness: 2, capture: 0 },
+  { id: 3, name: 'hint', key: 'hint', y: 250, height: 38, lines: 1, brightness: 1, capture: 0 },
+];
+
+export function wrap(text, cols = COLS) {
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    let line = '';
+    for (let word of para.split(/\s+/).filter(Boolean)) {
+      while (word.length > cols) {
+        if (line) { out.push(line); line = ''; }
+        out.push(word.slice(0, cols)); word = word.slice(cols);
+      }
+      if (!word) continue;
+      if (line && line.length + 1 + word.length > cols) { out.push(line); line = word; }
+      else line = line ? `${line} ${word}` : word;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+// Wrapped to the box width and cut to its line count. A cut line ends in "..." so it is never silent.
+export function fit(parts, max, cols = COLS) {
+  const lines = wrap(parts.join('\n'), cols);
+  while (lines.length && !lines.at(-1)) lines.pop();
+  if (lines.length <= max) return lines.join('\n');
+  const kept = lines.slice(0, max);
+  kept[max - 1] = `${kept[max - 1].slice(0, cols - 3)}...`;
+  return kept.join('\n');
+}
+
+const screen = (main, status = [], hint = '') => ({
+  main: fit(main, BOXES[0].lines),
+  status: fit(status, BOXES[1].lines),
+  hint: fit([hint], BOXES[2].lines),
+});
+
 export function fmtClock(ms) {
   const neg = ms < 0;
   const s = Math.floor(Math.abs(ms) / 1000);
@@ -7,35 +51,60 @@ export function fmtClock(ms) {
   return `${neg ? '-' : ''}${mm}:${ss}`;
 }
 
-export function glanceText(state, now = Date.now()) {
-  if (!state.token && state.ended) return ['CALLOUT', '', 'Run finished.', 'Thank you.'].join('\n');
-  if (!state.token) {
-    return ['CALLOUT', '', 'Not paired yet.', 'Open the Callout page on your', 'phone and enter your code.'].join('\n');
-  }
-  if (!state.sync) return ['CALLOUT', '', 'Connecting...'].join('\n');
-  const s = state.sync;
-  const due = s.dueInMs - (now - state.syncedAt);
-  const overdue = due < 0;
-  const lines = [
-    `${s.runName}`,
-    `${s.area}`,
-    '',
-    overdue ? `▲ OVERDUE ${fmtClock(due)}` : `Next check-in ${fmtClock(due)}`,
-    '',
-  ];
-  const team = Array.isArray(s.team) ? s.team : Object.values(s.team || {});
-  if (team.length) {
-    const ok = team.filter((t) => t.state === 'ok' || t.status === 'ok').length;
-    lines.push(`Team ${ok}/${team.length} checked in`);
-  }
+const dueIn = (state, now) => state.sync.dueInMs - (now - state.syncedAt);
+const countdown = (due) => (due < 0 ? `▲ OVERDUE ${fmtClock(due)}` : `Next check-in ${fmtClock(due)}`);
+
+// Things that need attention, most important first.
+function warnings(state, now) {
+  const out = [];
   const d = state.device || {};
-  if (typeof d.batteryLevel === 'number' && d.batteryLevel <= 15 && !d.isCharging) lines.push('', `▲ Glasses battery ${d.batteryLevel}%`);
-  else if (now - state.syncedAt > 20000) lines.push('', '○ No signal. Will retry.');
-  if (state.queue?.length) lines.push('', `○ ${state.queue.length} waiting to send`);
-  if (state.flash) lines.push('', state.flash);
-  else if (s.replies?.length) lines.push('', `Reply: ${s.replies.at(-1).text}`);
-  else lines.push('', 'Tap = check in. Double tap = exit.');
-  return lines.join('\n').slice(0, 900);
+  if (typeof d.batteryLevel === 'number' && d.batteryLevel <= 15 && !d.isCharging) out.push(`▲ Glasses battery ${d.batteryLevel}%`);
+  if (state.sync && now - state.syncedAt > 20000) out.push('○ No signal. Will retry.');
+  if (state.queue?.length) out.push(`○ ${state.queue.length} waiting to send`);
+  return out;
+}
+
+// The main screen. Main box: the countdown, or the newest reply while it shows. A short answer
+// to the last gesture (state.flash) always gets room.
+export function glanceView(state, now = Date.now()) {
+  const flash = state.flash ? [state.flash] : [];
+  if (!state.token && state.ended) return screen(['CALLOUT', '', 'Run finished.', 'Thank you.', ...flash]);
+  if (!state.token) {
+    return screen(['CALLOUT', 'Not paired yet.', 'Open the Callout page on your phone', 'and enter your code.', ...flash], [], 'Double tap: exit');
+  }
+  if (!state.sync) return screen(['CALLOUT', 'Connecting...', ...flash], warnings(state, now), 'Double tap: exit');
+  const s = state.sync;
+  const due = dueIn(state, now);
+  const team = (Array.isArray(s.team) ? s.team : Object.values(s.team || {})).filter((t) => t.state !== 'out');
+  const teamLine = team.length ? `Team ${team.filter((t) => t.state === 'ok').length}/${team.length} checked in` : '';
+  const warn = warnings(state, now);
+  const reply = state.reply;
+  let main;
+  if (reply) {
+    // An overdue check-in stays on top of any reply.
+    const head = due < 0 ? [countdown(due)] : [];
+    const body = fit([`${String(reply.by || '').trim() || 'Coordinator'}: ${reply.text}`], BOXES[0].lines - head.length - flash.length);
+    main = [...head, body, ...flash];
+  } else {
+    main = [countdown(due), '', String(s.area).slice(0, COLS * 2), ...(flash.length ? ['', ...flash] : [])];
+  }
+  const first = reply && due >= 0 ? countdown(due) : [teamLine, String(s.runName).slice(0, 18)].filter(Boolean).join(' ━ ');
+  const status = [first.slice(0, COLS), warn.join('  ').slice(0, COLS)];
+  const hint = reply?.tappable ? 'Tap: got it.  Hold: talk.' : 'Tap: check in. Hold: talk. Double: exit.';
+  return screen(main, status, hint);
+}
+
+// Screens opened by an action keep the countdown (and any warning) in the dim box underneath,
+// and a short answer to a gesture takes the hint line.
+function action(state, now, main, hint) {
+  const status = state.sync ? [countdown(dueIn(state, now)), warnings(state, now).join('  ').slice(0, COLS)] : [];
+  return screen(main, status, state.flash || hint);
+}
+
+export function view(state, now = Date.now()) {
+  const sc = state.screen;
+  if (state.mode === 'glance' || !sc) return glanceView(state, now);
+  return action(state, now, sc.main, sc.hint);
 }
 
 export const MENU = [
@@ -55,11 +124,13 @@ export const PRESET_CLUES = ['House empty', 'Person inside', 'Road blocked', 'Ne
 // Hold to talk. The cap stays well under the server's upload limit.
 export const HOLD_MAX_S = 10;
 export const HOLD_MIN_MS = 500;
-export const holdText = () => ['● Listening', '', 'Let go to send.'].join('\n');
-export const listenText = (secs) => ['● Listening', '', 'Say your clue.', `${secs}s left. Tap when done.`, 'Swipe to cancel.'].join('\n');
-export const thinkText = () => ['Got it.', '', 'Turning it into text...'].join('\n');
-export const confirmText = (text, secs) => ['Your clue:', '', `"${String(text).slice(0, 300)}"`, '', `Sending in ${secs}s.`, 'Tap = send now. Swipe or say "cancel".'].join('\n');
-
+export const holdScreen = () => ({ main: ['● Listening', '', 'Say it now.'], hint: 'Let go to send.' });
+export const listenScreen = (secs) => ({ main: ['● Listening', '', 'Say your clue.', `${secs}s left.`], hint: 'Tap when done. Swipe to cancel.' });
+export const thinkScreen = () => ({ main: ['Got it.', '', 'Turning it into text...'], hint: '' });
+export const confirmScreen = (text, secs) => ({
+  main: ['Your clue:', fit([`"${String(text)}"`], 5)],
+  hint: `Sending in ${secs}s. Tap: send. Swipe: cancel.`,
+});
 
 // The "say OK" window opens when a check-in is overdue. Short answers only, so chatter does not count.
 // Anything that denies, or asks for help, never counts: "not OK" must not check anyone in.
@@ -69,8 +140,7 @@ export function isOk(text) {
   if (!t || t.split(/\s+/).length > 5 || REFUSE.test(t)) return false;
   return /\b(ok|okay|here|checking in|check in|all good|fine|yes)\b/i.test(t.replace(/\./g, ''));
 }
-export const okText = (round) => ['▲ Check-in due', '', 'Say "OK" or tap.', `Listening ${round} of 3. Swipe to skip.`].join('\n');
-export const stillText = (round) => ['Still there?', '', 'Say "OK" or tap.', `Listening ${round} of 3. Swipe to skip.`].join('\n');
+export const okScreen = (round) => ({ main: ['▲ Check-in due', '', 'Say "OK" or tap.', `Listening ${round} of 3.`], hint: 'Tap: check in. Swipe: skip.' });
+export const stillScreen = (round) => ({ main: ['Still there?', '', 'Say "OK" or tap.', `Listening ${round} of 3.`], hint: 'Tap: yes. Swipe: skip.' });
 
-export const backupText = () => ['Ask the team for backup?', '', 'Your coordinator and team', 'get your last position.', '', 'Tap = send. Swipe = cancel.'].join('\n');
-export const replyText = (r) => `${r.by || 'Coordinator'}: ${r.text}\nTap = got it`;
+export const backupScreen = () => ({ main: ['Ask the team for backup?', '', 'Your coordinator and team', 'get your last position.'], hint: 'Tap: send. Swipe: cancel.' });

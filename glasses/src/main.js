@@ -1,9 +1,9 @@
 import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
-import { glanceText, MENU, PRESET_CLUES, HOLD_MAX_S, HOLD_MIN_MS, holdText, listenText, thinkText, confirmText, isOk, okText, stillText, backupText, replyText } from './view.js';
+import { view, BOXES, MENU, PRESET_CLUES, HOLD_MAX_S, HOLD_MIN_MS, holdScreen, listenScreen, thinkScreen, confirmScreen, isOk, okScreen, stillScreen, backupScreen } from './view.js';
 import { makeStillness } from './motion.js';
 
 const SERVER = import.meta.env?.VITE_SERVER_URL || localStorage.getItem('callout.server') || 'http://localhost:8787';
-const state = { mode: 'glance', screen: '', pending: null, token: null, sync: null, syncedAt: 0, flash: '', device: {}, lastReply: '' };
+const state = { mode: 'glance', screen: null, reply: null, pending: null, token: null, sync: null, syncedAt: 0, flash: '', device: {}, lastReply: '' };
 let bridge;
 let flashTimer;
 
@@ -24,23 +24,41 @@ async function api(path, body) {
 // The server says the run is over: show it once, forget the token, go back to the pairing screen.
 function endedByServer() {
   if (!state.token) return;
-  state.token = null; state.sync = null; state.ended = true; state.mode = 'glance'; state.pendingReply = null;
+  state.token = null; state.sync = null; state.ended = true; state.mode = 'glance'; state.reply = null;
   bridge?.setLocalStorage('callout.token', '').catch(() => {});
   paint();
 }
 
-async function paint() {
-  if (!bridge || state.mode === 'presets') return;
-  const content = state.mode === 'glance' ? glanceText(state) : state.screen;
-  await bridge.textContainerUpgrade({ containerID: 1, containerName: 'main', content });
+// Only boxes whose text changed are sent to the glasses, one paint at a time.
+let drawn = {};
+let painting = Promise.resolve();
+function paint() {
+  painting = painting.then(draw).catch(() => {});
+  return painting;
 }
-function setScreen(text) { state.screen = text; paint(); }
+async function draw() {
+  if (!bridge || state.mode === 'presets') return;
+  const now = view(state);
+  for (const box of BOXES) {
+    const content = now[box.key] || ' ';
+    if (drawn[box.key] === content) continue;
+    if (await bridge.textContainerUpgrade({ containerID: box.id, containerName: box.name, content })) drawn[box.key] = content;
+  }
+}
+function setScreen(screen) { state.screen = screen; paint(); }
 
-const TEXT_PAGE = () => ({
-  containerTotalNum: 1,
-  textObject: [{ xPosition: 0, yPosition: 0, width: 576, height: 288, containerID: 1, containerName: 'main', content: glanceText(state), isEventCapture: 1 }],
-  menuObject: { menuItems: MENU },
-});
+const TEXT_PAGE = () => {
+  const now = view(state);
+  drawn = {};
+  return {
+    containerTotalNum: BOXES.length,
+    textObject: BOXES.map((box) => ({
+      xPosition: 0, yPosition: box.y, width: 576, height: box.height, paddingLength: 4, textColor: box.brightness,
+      containerID: box.id, containerName: box.name, content: now[box.key] || ' ', isEventCapture: box.capture,
+    })),
+    menuObject: { menuItems: MENU },
+  };
+};
 
 // ---- voice clue: hold to talk (let go to send), or the menu route with a 4 second window ----
 const voice = { frames: [], timer: null, t0: 0, id: 0, hold: false };
@@ -56,7 +74,7 @@ async function startTalk(hold = false) {
   const secs = hold ? HOLD_MAX_S : 4;
   state.mode = 'listen'; voice.hold = hold; voice.frames = []; voice.t0 = Date.now();
   clearInterval(voice.timer);
-  setScreen(hold ? holdText() : listenText(secs));
+  setScreen(hold ? holdScreen() : listenScreen(secs));
   const on = await bridge.audioControl(true, AudioInputSource.Glasses).catch(() => false);
   if (voice.id !== id || state.mode !== 'listen') {
     // Let go or cancelled before the microphone had opened: make sure it does not stay open.
@@ -66,7 +84,7 @@ async function startTalk(hold = false) {
   if (!on) { state.mode = 'glance'; return flash('▲ Microphone not available'); }
   voice.timer = setInterval(() => {
     const left = secs - (Date.now() - voice.t0) / 1000;
-    if (left <= 0) stopTalk(); else if (!hold) setScreen(listenText(Math.ceil(left)));
+    if (left <= 0) stopTalk(); else if (!hold) setScreen(listenScreen(Math.ceil(left)));
   }, 500);
 }
 
@@ -94,7 +112,7 @@ async function okWindow(kind = 'checkin') {
   let answered = false;
   try {
     for (let round = 1; round <= 3 && state.mode === 'ok' && ok.run === mine; round++) {
-      voice.frames = []; setScreen(kind === 'still' ? stillText(round) : okText(round));
+      voice.frames = []; setScreen(kind === 'still' ? stillScreen(round) : okScreen(round));
       if (!(await bridge.audioControl(true, AudioInputSource.Glasses))) break;
       await sleep(3000);
       // Skipped or replaced (for example by hold to talk): the microphone now belongs to someone else.
@@ -126,7 +144,7 @@ function watchDue() {
 async function stopTalk() {
   if (state.mode !== 'listen') return;
   clearInterval(voice.timer);
-  state.mode = 'think'; setScreen(thinkText());
+  state.mode = 'think'; setScreen(thinkScreen());
   const id = voice.id;
   const left = () => voice.id !== id || state.mode !== 'think'; // left through the menu while waiting
   await bridge.audioControl(false);
@@ -141,9 +159,9 @@ async function stopTalk() {
 
 function showConfirm(text) {
   state.mode = 'confirm'; state.pending = text;
-  let left = 3; setScreen(confirmText(text, left));
+  let left = 3; setScreen(confirmScreen(text, left));
   clearInterval(voice.timer);
-  voice.timer = setInterval(() => { left -= 1; if (left <= 0) sendPending(); else setScreen(confirmText(text, left)); }, 1000);
+  voice.timer = setInterval(() => { left -= 1; if (left <= 0) sendPending(); else setScreen(confirmScreen(text, left)); }, 1000);
 }
 
 async function sendClue(text) {
@@ -219,7 +237,7 @@ async function openPresets() {
   state.mode = 'presets';
   await bridge.rebuildPageContainer({
     containerTotalNum: 1,
-    listObject: [{ xPosition: 0, yPosition: 0, width: 576, height: 288, containerID: 2, containerName: 'presets',
+    listObject: [{ xPosition: 0, yPosition: 0, width: 576, height: 288, containerID: 4, containerName: 'presets',
       itemContainer: { itemCount: PRESET_CLUES.length, itemName: PRESET_CLUES }, isEventCapture: 1 }],
     menuObject: { menuItems: MENU },
   });
@@ -248,13 +266,19 @@ async function sync() {
     flush();
     if (state.sync.replies?.length) {
       const last = state.sync.replies.at(-1);
-      state.lastReply = last.full || last.text;
-      state.pendingReply = last; // a tap in the next 10 seconds says "got it"
-      clearTimeout(state.replyTimer); state.replyTimer = setTimeout(() => { state.pendingReply = null; }, 10000);
-      flash(replyText(last), 10000);
+      state.lastReply = last.full || last.text; state.lastReplyBy = last.by;
+      showReply(last);
     }
     paint();
   } catch { /* offline: keep the last screen. The server notices if we stay silent. */ }
+}
+
+// A reply takes the main box for 10 seconds. While it shows, a tap says "got it".
+function showReply(r) {
+  state.reply = { id: r.id, by: r.by, text: r.text, tappable: Boolean(r.id) };
+  state.flash = '';
+  clearTimeout(state.replyTimer); state.replyTimer = setTimeout(() => { state.reply = null; paint(); }, 10000);
+  paint();
 }
 
 async function checkIn() {
@@ -292,7 +316,7 @@ async function signOut() {
 // Backup request: asks first, never sends by one stray tap, and times out without sending.
 function askBackup() {
   if (!state.token) return flash('Pair first');
-  state.mode = 'backup'; setScreen(backupText());
+  state.mode = 'backup'; setScreen(backupScreen());
   clearTimeout(state.backupTimer); state.backupTimer = setTimeout(() => { if (state.mode === 'backup') cancelClue('Not sent'); }, 8000);
 }
 async function sendBackup() {
@@ -301,9 +325,9 @@ async function sendBackup() {
 }
 
 async function confirmReplyNow() {
-  const r = state.pendingReply; state.pendingReply = null;
+  const r = state.reply;
   if (!r?.id) return;
-  state.flash = ''; flash('● Got it', 2000);
+  clearTimeout(state.replyTimer); state.reply = null; flash('● Got it', 2000);
   try { await api('/api/confirm', { replyId: r.id }); } catch { /* the coordinator just does not see the reaction */ }
 }
 
@@ -313,7 +337,7 @@ async function onMenu(id) {
   if (id === 1) checkIn();
   else if (id === 2) startTalk(false);
   else if (id === 3) openPresets();
-  else if (id === 4) flash(state.lastReply ? `Reply: ${state.lastReply}` : 'No reply yet', 6000);
+  else if (id === 4) { if (state.lastReply) showReply({ by: state.lastReplyBy, text: state.lastReply }); else flash('No reply yet', 6000); }
   else if (id === 5) signOut();
   else if (id === 8) askBackup();
   else if (id === 6) addPhoto(true);
@@ -352,7 +376,7 @@ function onEvent(e) {
     }
     return;
   }
-  if (click && state.pendingReply) confirmReplyNow();      // a tap while a reply shows means got it
+  if (click && state.reply?.tappable) confirmReplyNow();      // a tap while a reply shows means got it
   else if (click) checkIn();                              // ring or temple tap
   else if (dbl) bridge.shutDownPageContainer(1);          // store rule: system exit dialog
 }
