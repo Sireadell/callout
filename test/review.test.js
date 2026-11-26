@@ -141,6 +141,16 @@ test('sign out stops the notices and shows on the board', async () => {
   assert.match(boardText(engine, run.id), /signed out/);
 });
 
+test('a finished run board shows no countdown', async () => {
+  const { engine, token, run } = await started();
+  engine.checkIn(token, {});
+  engine.endRun(run.id);
+  const text = boardText(engine, run.id);
+  assert.match(text, /\(finished\)/);
+  assert.match(text, /\) 1 check-in(,|$)/m);
+  assert.doesNotMatch(text, /next check-in|overdue/);
+});
+
 test('need backup is a loud team notice with a map pin, worded as a request', async () => {
   const { engine, token, tg } = await started();
   engine.needBackup(token, { pos: { lat: 51.5, lng: -0.12 } });

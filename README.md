@@ -56,7 +56,7 @@ npm test
 | Command | What it shows | Result today |
 |---|---|---|
 | `npm run proof` | A full run on a fake Telegram chat: pairing, clue pin, reply, notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, clean-up | 23 of 23 checks pass, 36 messages sent |
-| `npm test` | Server tests, with a fake clock so timers run in milliseconds | 176 of 176 pass |
+| `npm test` | Server tests, with a fake clock so timers run in milliseconds | 177 of 177 pass |
 | `cd glasses; npm install; npm test` | The lens app against fake glasses and a fake server | 61 of 61 pass |
 | `npm ci --prefix glasses; npm run panel:proof` | The real lens app against a local server, with fake glasses input and a fake Telegram | All checks pass |
 
@@ -70,7 +70,7 @@ The server uses one outside package, an MP3 encoder for voice notes. Everything 
 |---|---|
 | "Usefulness on G2 · 30%. Solves a real everyday moment, works at a glance and hands-free." | The check-in on a field shift. At a glance: countdown, area, team count. Hands-free: hold to talk, and a due check-in listens for "OK" |
 | "Read and write · 25%. Acting is fast: a short phrase, one tap or the ring, with smart defaults or AI drafts instead of long dictation." | Judged first. Read: the reply as one line, a photo from the coordinator, and questions with up to 3 one-tap answers. Write: one tap checks in, picks a quick clue or says "got it". Or hold, speak, let go, and the team can hear the clue as a voice note if the coordinator turned them on. The coordinator answers with 4 buttons, up to 2 AI suggestions, a reaction, a line or a photo |
-| "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram, and a page a judge can try with no glasses. 176 server tests, 61 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
+| "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram, and a page a judge can try with no glasses. 177 server tests, 61 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
 | "UX for display and voice · 15%. Clear on a 576 × 288 monochrome display, natural by voice." | A bright main line, a dim status line and a dim hint, each with a line limit. Plain glyphs (● ○ ▲), since the lens drops emoji. Every gesture gets an answer on screen |
 | "Business potential and safety · 10%. Real users and demand, careful with data and money." | Team notices only, not an emergency service. "I'm not OK" never checks in. Only the coordinator can act. No position kept after a run, keys only as hashes, the run notice says what goes to the AI. No real users yet, buyers are a guess |
 
@@ -142,8 +142,8 @@ What goes to the AI service, only if a key is set (Claude or OpenRouter): clue w
 | No emergency, life-saving or health wording; AI suggestions with words like trapped or hurt are dropped | [engine.test.js](test/engine.test.js), [view.test.js](glasses/test/view.test.js), [ai.test.js](test/ai.test.js) | Tested |
 | Sheet in and out, AI line and summary | [ai.test.js](test/ai.test.js) | Tested. Ran live with a real Sheet and a real `/end` |
 | "Still there?", Discord buttons, Mini App | [motion.test.js](glasses/test/motion.test.js), [discord.test.js](test/discord.test.js), [miniapp.test.js](test/miniapp.test.js) | Tested with fakes only |
-| Photo from the coordinator on the lens | [picture.test.js](test/picture.test.js), [picture.test.js](glasses/test/picture.test.js) | Tested. Seen drawn in the simulator against a local server. Not sent from real Telegram yet |
-| Voice notes, off until `/voice on`, never stored | [voicenote.test.js](test/voicenote.test.js), [voicenote.test.js](glasses/test/voicenote.test.js) | Tested. Played back in a browser. Not on real Telegram yet |
+| Photo from the coordinator on the lens | [picture.test.js](test/picture.test.js), [picture.test.js](glasses/test/picture.test.js) | Tested. Sent from real Telegram as a reply to a clue, and fetched by the lens from the live server. Seen drawn in the simulator |
+| Voice notes, off until `/voice on`, never stored | [voicenote.test.js](test/voicenote.test.js), [voicenote.test.js](glasses/test/voicenote.test.js) | Tested. Arrived in real Telegram as a voice message under the clue, played back, and removed by `/end clear`. With voice notes off, no recording went out |
 | `/try` practice teams: separate, 30 minutes, capped, no Telegram, Sheet, AI or disk | [sandbox.test.js](test/sandbox.test.js) | Tested, and run in a browser at desktop and phone width |
 
 ## What I've seen work on real Telegram
@@ -161,7 +161,7 @@ All six are fixed and tested: the board posted three times when notices came tog
 | Part | Where it stands |
 |---|---|
 | Voice | 26 November, live server, simulator, PC microphone, phrases played by the computer's voice (not a person, not real glasses), hold to talk: "The bridge on Mill Lane is flooded" came back word for word and posted with reply and AI buttons. "I am OK" checked in and "I am not OK" didn't. "House empty" was first heard as "Margin. Only house empty." and posted as a free clue, then matched on the second try. Not tried: spoken "backup" and "cancel", the "OK" on an overdue check-in, a human voice, the glasses mic |
-| New in this version | Apart from voice, the one-person code, AI buttons and the `/run` AI notice: fakes, simulator or browser only. That includes the photo on the lens and voice notes |
+| New in this version | Apart from voice, the one-person code, AI buttons, the `/run` AI notice, the photo to the lens and voice notes: fakes, simulator or browser only |
 | App closed | The simulator sends no exit event, so fake glasses only. Unknown whether the notice leaves a real phone |
 | Discord | A webhook notice reached a real channel in 1 second. Reply buttons with fakes only |
 | AI | Ran for real through OpenRouter (Claude Haiku): one line in 2.1 s, a summary in 2.6 s, AI buttons seen appearing under a live clue, never pressed. Answer choices not yet |

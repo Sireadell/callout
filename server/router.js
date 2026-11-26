@@ -32,7 +32,7 @@ export function boardText(engine, runId) {
   const rows = engine.teamStatus(runId).map((s) => {
     const v = run.volunteers[s.id];
     const left = v.status === 'active' ? Math.round((v.lastCheckin + engine.gap(run) - engine.clock.now()) / 60000) : null;
-    const when = v.status === 'signed_out' ? 'signed out' : left === null ? 'not joined' : left >= 0 ? `next check-in in ${left} min` : `${-left} min overdue`;
+    const when = run.status === 'ended' ? `${v.checkins} check-in${v.checkins === 1 ? '' : 's'}` : v.status === 'signed_out' ? 'signed out' : left === null ? 'not joined' : left >= 0 ? `next check-in in ${left} min` : `${-left} min overdue`;
     return `${ICON[s.state]} ${s.name} (${s.area}) ${when}${s.battery != null ? `, glasses ${s.battery}%` : ''}`;
   });
   return `Run: ${run.name}${run.status === 'ended' ? ' (finished)' : ''}\n${rows.join('\n') || 'No volunteers yet.'}\nTeam notices only. Not an emergency service.`;
