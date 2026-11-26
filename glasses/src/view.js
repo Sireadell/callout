@@ -61,6 +61,7 @@ function warnings(state, now) {
   if (typeof d.batteryLevel === 'number' && d.batteryLevel <= 15 && !d.isCharging) out.push(`▲ Glasses battery ${d.batteryLevel}%`);
   if (state.sync && now - state.syncedAt > 20000) out.push('○ No signal. Will retry.');
   if (state.queue?.length) out.push(`○ ${state.queue.length} waiting to send`);
+  if (state.question) out.push('○ Question waiting: Menu');
   return out;
 }
 
@@ -122,17 +123,25 @@ export const MENU = [
   { itemID: 5, itemName: 'Sign out' },
 ];
 
+// Added to the menu while the coordinator's question is open.
+export const ANSWER_ITEM = { itemID: 9, itemName: 'Answer question' };
+
+// A question from the coordinator: the words on top, then a list of answers, ending in "Speak".
+export const SPEAK = 'Speak';
+export const questionText = (q, note) => fit([note || `${String(q.by || '').trim() || 'Coordinator'} asks:`, String(q.text || '')], 3);
+export const questionRows = (q) => [...(q.answers || []).map((a) => String(a).slice(0, 16)).filter(Boolean).slice(0, 3), SPEAK];
+
 // One tap each, no typing. Short so they fit on the lens.
 export const PRESET_CLUES = ['House empty', 'Person inside', 'Road blocked', 'Need boat'];
 
 // Hold to talk. The cap stays well under the server's upload limit.
 export const HOLD_MAX_S = 10;
 export const HOLD_MIN_MS = 500;
-export const holdScreen = () => ({ main: ['● Listening', '', 'Say it now.'], hint: 'Let go to send.' });
-export const listenScreen = (secs) => ({ main: ['● Listening', '', 'Say your clue.', `${secs}s left.`], hint: 'Tap when done. Swipe to cancel.' });
+export const holdScreen = (what = 'it') => ({ main: ['● Listening', '', `Say ${what} now.`], hint: 'Let go to send.' });
+export const listenScreen = (secs, what = 'clue') => ({ main: ['● Listening', '', `Say your ${what}.`, `${secs}s left.`], hint: 'Tap when done. Swipe to cancel.' });
 export const thinkScreen = () => ({ main: ['Got it.', '', 'Turning it into text...'], hint: '' });
-export const confirmScreen = (text, secs) => ({
-  main: ['Your clue:', fit([`"${String(text)}"`], 5)],
+export const confirmScreen = (text, secs, what = 'clue') => ({
+  main: [`Your ${what}:`, fit([`"${String(text)}"`], 5)],
   hint: `Sending in ${secs}s. Tap: send. Swipe: cancel.`,
 });
 
