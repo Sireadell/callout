@@ -312,7 +312,7 @@ async function pair(code) {
   if (!r.ok) throw new Error('bad code');
   const j = await r.json();
   state.token = j.token; state.ended = false;
-  await bridge.setLocalStorage('callout.token', j.token);
+  await bridge.setLocalStorage('callout.token', j.token); phoneStatus();
   await sync(); await heartbeat();
 }
 
@@ -407,6 +407,8 @@ const GESTURES = 'Tap: check in. Hold: talk. Menu: more.';
 
 async function start() {
   bridge = await waitForEvenAppBridge();
+  // The host says once, right after load, whether the app was opened from the phone or the glasses menu.
+  bridge.onLaunchSource((source) => { state.launch = source; phoneStatus(); paint(); });
   state.token = (await bridge.getLocalStorage('callout.token')) || null;
   try { state.queue = JSON.parse((await bridge.getLocalStorage('callout.queue')) || '[]'); } catch { state.queue = []; }
   const res = await bridge.createStartUpPageContainer(TEXT_PAGE());
@@ -430,6 +432,14 @@ async function start() {
   sync();
 }
 start();
+
+// One line on the phone page that matches how the app was opened.
+function phoneStatus() {
+  const out = document.getElementById('pairMsg');
+  if (!out) return;
+  if (state.token) out.textContent = 'Callout is running on your glasses.';
+  else if (state.launch === 'glassesMenu') out.textContent = 'Opened from your glasses. Enter your code here.';
+}
 
 // Phone-side pairing form (glasses cannot type).
 document.getElementById('pairForm')?.addEventListener('submit', async (ev) => {

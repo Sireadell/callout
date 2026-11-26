@@ -70,7 +70,11 @@ export function glanceView(state, now = Date.now()) {
   const flash = state.flash ? [state.flash] : [];
   if (!state.token && state.ended) return screen(['CALLOUT', '', 'Run finished.', 'Thank you.', ...flash]);
   if (!state.token) {
-    return screen(['CALLOUT', 'Not paired yet.', 'Open the Callout page on your phone', 'and enter your code.', ...flash], [], 'Double tap: exit');
+    // Opened from the glasses menu, the phone may still be in a pocket: say so.
+    const how = state.launch === 'glassesMenu'
+      ? ['Take out your phone, open Callout', 'in the Even app and enter your code.']
+      : ['Enter your code on the Callout page', 'on your phone.'];
+    return screen(['CALLOUT', 'Not paired yet.', ...how, ...flash], [], 'Double tap: exit');
   }
   if (!state.sync) return screen(['CALLOUT', 'Connecting...', ...flash], warnings(state, now), 'Double tap: exit');
   const s = state.sync;

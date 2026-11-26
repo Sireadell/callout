@@ -121,3 +121,9 @@ test('a gesture on a busy screen is answered on the hint line, and old messages 
   assert.equal(view(state, 0).hint, '○ Still working...');
   assert.equal(view({ ...state, mode: 'listen', screen: holdScreen(), flashMode: 'glance' }, 0).hint, 'Let go to send.');
 });
+
+test('the first screen matches how the app was opened', () => {
+  assert.match(glanceView({ launch: 'glassesMenu' }).main, /Take out your phone/);
+  assert.match(glanceView({ launch: 'appMenu' }).main, /Enter your code/);
+  assert.match(glanceView({}).main, /Enter your code/);
+});
