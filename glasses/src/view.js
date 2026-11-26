@@ -98,7 +98,7 @@ export function glanceView(state, now = Date.now()) {
 // and a short answer to a gesture takes the hint line.
 function action(state, now, main, hint) {
   const status = state.sync ? [countdown(dueIn(state, now)), warnings(state, now).join('  ').slice(0, COLS)] : [];
-  return screen(main, status, state.flash || hint);
+  return screen(main, status, (state.flashMode === state.mode && state.flash) || hint);
 }
 
 export function view(state, now = Date.now()) {

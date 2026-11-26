@@ -115,3 +115,9 @@ test('an answer that denies or asks for help never checks in', () => {
   ["I'm not OK", 'not ok', 'Not okay.', "I'm not fine", 'no', 'No, not here', "I can't check in", 'I can’t, not fine', "this isn't ok", 'nope', 'never fine', 'help', 'OK help me', 'hurt but here', 'I am not here'].forEach((t) => assert.ok(!isOk(t), t));
   ['ok', 'OK.', 'yes', "I'm fine", 'okay now'].forEach((t) => assert.ok(isOk(t), t));
 });
+
+test('a gesture on a busy screen is answered on the hint line, and old messages do not leak onto it', () => {
+  const state = { token: 't', syncedAt: 0, mode: 'think', screen: thinkScreen(), flash: '○ Still working...', flashMode: 'think', sync: { runName: 'E', area: 'A', dueInMs: 1000, team: [] } };
+  assert.equal(view(state, 0).hint, '○ Still working...');
+  assert.equal(view({ ...state, mode: 'listen', screen: holdScreen(), flashMode: 'glance' }, 0).hint, 'Let go to send.');
+});

@@ -165,6 +165,7 @@ function showConfirm(text) {
 }
 
 async function sendClue(text) {
+  flash('○ Sending clue...', 8000);
   const here = await pos();
   try { const r = await api('/api/clue', { text, pos: here }); state.lastClueId = r.id; flash('● Clue sent'); }
   catch (e) { if (isNetwork(e)) hold('/api/clue', { text, pos: here }, 'Clue'); else flash('▲ Not sent. Try again'); }
@@ -246,8 +247,9 @@ async function closePresets() {
   state.mode = 'glance';
   await bridge.rebuildPageContainer(TEXT_PAGE());
 }
+// A short answer on the lens. Every gesture gets one, or a new screen.
 function flash(msg, ms = 3000) {
-  state.flash = msg; paint(); clearTimeout(flashTimer);
+  state.flash = msg; state.flashMode = state.mode; paint(); clearTimeout(flashTimer);
   flashTimer = setTimeout(() => { state.flash = ''; paint(); }, ms);
 }
 
@@ -277,12 +279,19 @@ async function sync() {
 function showReply(r) {
   state.reply = { id: r.id, by: r.by, text: r.text, tappable: Boolean(r.id) };
   state.flash = '';
-  clearTimeout(state.replyTimer); state.replyTimer = setTimeout(() => { state.reply = null; paint(); }, 10000);
+  clearTimeout(state.replyTimer); state.replyTimer = setTimeout(expireReply, 10000);
   paint();
+}
+
+// A reply that arrived while another screen was up waits for the main screen, so it is not lost.
+function expireReply() {
+  if (state.mode !== 'glance') { state.replyTimer = setTimeout(expireReply, 5000); return; }
+  state.reply = null; paint();
 }
 
 async function checkIn() {
   if (!state.token) return flash('Pair first');
+  flash('○ Checking in...', 8000);
   const here = await pos();
   try { await api('/api/checkin', { pos: here }); flash('● Checked in'); await sync(); }
   catch (e) { if (isNetwork(e)) hold('/api/checkin', { pos: here }, 'Check-in'); else flash('▲ Not sent. Try again'); }
@@ -309,6 +318,7 @@ async function pair(code) {
 
 // Sign out: stops this person's check-in notices, then the system exit dialog.
 async function signOut() {
+  flash('○ Signing out...', 8000);
   try { await api('/api/signout', {}); } catch { return flash('▲ Not signed out. Try again'); }
   bridge.shutDownPageContainer(1);
 }
@@ -321,6 +331,7 @@ function askBackup() {
 }
 async function sendBackup() {
   clearTimeout(state.backupTimer); state.mode = 'glance';
+  flash('○ Sending...', 8000);
   try { await api('/api/backup', { pos: await pos() }); flash('● Team asked for backup', 6000); } catch { flash('▲ Not sent. Try again'); }
 }
 
@@ -366,7 +377,7 @@ function onEvent(e) {
   if (state.mode === 'listen') { if (click) stopTalk(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
   if (state.mode === 'ok') { if (click) { const still = ok.kind === 'still'; cancelClue(''); if (still) { motion.reset(); state.stillUnanswered = false; flash('● Thanks'); } else checkIn(); } else if (swipe || dbl) cancelClue('Skipped'); return; }
   if (state.mode === 'confirm') { if (click) sendPending(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
-  if (state.mode === 'think') return;
+  if (state.mode === 'think') return flash(BUSY);
   if (state.mode === 'backup') { if (click) sendBackup(); else if (swipe || dbl) { clearTimeout(state.backupTimer); cancelClue('Cancelled'); } return; }
   if (state.mode === 'presets') {
     if (dbl) return closePresets();
@@ -379,6 +390,7 @@ function onEvent(e) {
   if (click && state.reply?.tappable) confirmReplyNow();      // a tap while a reply shows means got it
   else if (click) checkIn();                              // ring or temple tap
   else if (dbl) bridge.shutDownPageContainer(1);          // store rule: system exit dialog
+  else if (swipe) flash(GESTURES);
 }
 
 // Holding works from the main screen, the quick clue list, the "say OK" window and the confirm screen
@@ -387,7 +399,11 @@ function onHold() {
   if (state.mode === 'presets') return closePresets().then(() => startTalk(true));
   if (state.mode === 'ok' || state.mode === 'confirm') { cancelClue(''); return startTalk(true); }
   if (state.mode === 'glance') return startTalk(true);
+  if (state.mode === 'think') return flash(BUSY);
+  if (state.mode === 'backup') return flash('Tap: send. Swipe: cancel.');
 }
+const BUSY = '○ Still working...';
+const GESTURES = 'Tap: check in. Hold: talk. Menu: more.';
 
 async function start() {
   bridge = await waitForEvenAppBridge();
