@@ -1,4 +1,4 @@
-// Pure screen text for the lenses. No emoji: the lens drops them. Glyphs used: ● ○ ▲ ━
+// Pure screen text for the lenses. No emoji: the lens drops them. Glyphs used: ● ○ ▲
 //
 // Every screen is three text boxes: a bright main box, a dim status box and a dimmer hint line.
 // Each box is wrapped and cut here, so nothing ever runs off the lens.
@@ -117,7 +117,7 @@ export function glanceView(state, now = Date.now()) {
   } else {
     main = [countdown(due), '', String(s.area).slice(0, COLS * 2), ...(flash.length ? ['', ...flash] : [])];
   }
-  const first = reply && due >= 0 ? countdown(due) : [teamLine, String(s.runName).slice(0, 18)].filter(Boolean).join(' ━ ');
+  const first = reply && due >= 0 ? countdown(due) : [teamLine, String(s.runName).slice(0, 18)].filter(Boolean).join(' | ');
   const status = [first.slice(0, COLS), warnLine(warn)];
   const hint = reply?.tappable ? 'Tap: got it.  Hold: talk.'
     : state.lastReply && state.sides ? 'Tap: check in. Left: reply. Hold: talk.'
