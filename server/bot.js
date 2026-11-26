@@ -11,6 +11,7 @@ const HELP = [
   '/add <name> | <area>  add a volunteer, get a pairing code for the glasses app',
   '/status  show who is due or overdue',
   '/interval <minutes>  set the check-in gap for this run (5 to 60)',
+  '/clues a, b, c, d  set the one-tap clues on the lens (/clues default to reset)',
   '/reply <name> <text>  send a line to a volunteer\'s lens (or reply to their clue)',
   '/app  open the team dashboard (in a private chat with me)',
   '/sheet <link>  connect a Google Sheet (tab Volunteers: name, area)',
@@ -33,7 +34,7 @@ export const COMMANDS = {
   everyone: [{ command: 'start', description: 'How this works' }, { command: 'help', description: 'List the commands' }],
   coordinator: [
     { command: 'team', description: 'Make this group a team' }, { command: 'run', description: 'Start a run' },
-    { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' }, { command: 'interval', description: 'Check-in gap in minutes (5 to 60)' },
+    { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' }, { command: 'interval', description: 'Check-in gap in minutes (5 to 60)' }, { command: 'clues', description: 'Set the one-tap clues on the lens' },
     { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'app', description: 'Open the team dashboard' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
     { command: 'end', description: 'Finish the run' },
     { command: 'coordinator', description: 'Send private notices to me' }, { command: 'help', description: 'List the commands' },
@@ -41,7 +42,7 @@ export const COMMANDS = {
 };
 
 // Commands that change a run. Everyone in the group can read the board; only the coordinator or a group admin can do these.
-const COORD_ONLY = new Set(['coordinator', 'interval', 'run', 'add', 'reply', 'sheet', 'import', 'end']);
+const COORD_ONLY = new Set(['coordinator', 'clues', 'interval', 'run', 'add', 'reply', 'sheet', 'import', 'end']);
 
 export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
@@ -137,6 +138,12 @@ ${AI_NOTICE}` : ''}`);
     if (name === 'interval') {
       try { engine.setGap(run.id, arg); } catch { return say(chatId, 'Use: /interval <minutes>, between 5 and 60.'); }
       return;
+    }
+    if (name === 'clues') {
+      const show = (list) => `One-tap clues on the lens: ${list.join(', ')}`;
+      if (!arg.trim()) return say(chatId, `${show(engine.quickClues(run))}\nChange them with /clues House empty, No answer (up to 4, up to 16 characters each).`);
+      try { return say(chatId, show(engine.setQuickClues(run.id, /^default$/i.test(arg.trim()) ? [] : arg.split(',')))); }
+      catch (e) { return say(chatId, `Use: /clues with ${e.message}, separated by commas.`); }
     }
     if (name === 'reply') {
       const v = Object.values(run.volunteers).find((x) => arg.toLowerCase().startsWith(x.name.toLowerCase() + ' '));

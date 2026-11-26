@@ -45,6 +45,16 @@ export class Engine {
     return m;
   }
 
+  // Set with /clues: 1 to 4 short lines. An empty list goes back to the everyday defaults.
+  setQuickClues(runId, list) {
+    const run = this._run(runId);
+    const clues = [...new Set(list.map((c) => String(c).replace(/\s+/g, ' ').trim()).filter(Boolean))];
+    if (clues.length > 4 || clues.some((c) => c.length > 16)) throw new Error('up to 4 clues of up to 16 characters');
+    run.quickClues = clues.length ? clues : undefined;
+    this.changed();
+    return this.quickClues(run);
+  }
+
   // ---------- setup ----------
   addTeam({ name, telegram = null, discord = null }) {
     const id = newId('team');
@@ -196,7 +206,7 @@ export class Engine {
     return {
       runName: run.name, area: v.area, dueInMs: v.lastCheckin + this.gap(run) - now,
       step: v.step, replies: replies.map((r) => ({ id: r.id, text: r.short || r.text, full: r.text, by: r.by })),
-      team: this.teamStatus(run.id),
+      team: this.teamStatus(run.id), quickClues: this.quickClues(run),
     };
   }
 
