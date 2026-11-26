@@ -41,6 +41,17 @@ test('a reply reaches the lens as soon as the server has it', async () => {
   assert.match(app.all(), /got it/);
 });
 
+test('a reply sent again is not shown twice, and the newest rev goes back from any sync', async () => {
+  await until(() => longs().at(-1).body.rev === rev, 4000, 'next long poll');
+  app.tap(); // got it
+  await until(() => !/Come back to the van/.test(app.all()), 2000, 'reply cleared');
+  pending = [{ id: 'rep_1', text: 'Come back to the van', by: 'Sam' }]; rev += 1;
+  waiting.splice(0).forEach((go) => go());
+  await until(() => longs().at(-1).body.rev === rev, 4000, 'long poll with new rev');
+  await wait(100);
+  assert.doesNotMatch(app.all(), /Come back to the van/);
+});
+
 test('when the long poll fails, the 5 second poll takes over', async () => {
   await wait(1200);
   broken = true;

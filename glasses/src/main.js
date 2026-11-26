@@ -343,8 +343,12 @@ function applySync(reply) {
   state.sync = reply;
   state.syncedAt = Date.now();
   flush();
-  if (reply.replies?.length) {
-    const last = reply.replies.at(-1);
+  if (typeof reply.rev === 'number') long.rev = reply.rev; // the newest from any sync goes back
+  // After a dropped connection the server may send a reply again: each one is shown once.
+  const fresh = (reply.replies || []).filter((r) => !r.id || !seenReplies.has(r.id));
+  fresh.forEach((r) => { if (r.id) seenReplies.add(r.id); });
+  if (fresh.length) {
+    const last = fresh.at(-1);
     state.lastReply = last.full || last.text; state.lastReplyBy = last.by;
     showReply(last);
   }
@@ -359,6 +363,7 @@ function applySync(reply) {
 // The plain 5 second poll stays as the fallback. 15 seconds keeps the "No signal" line honest.
 const LONG_WAIT_S = 15;
 const long = { live: false, rev: -1, ctl: null };
+const seenReplies = new Set();
 async function longPoll() {
   for (;;) {
     if (!state.token) { long.live = false; await sleep(1000); continue; }
@@ -369,7 +374,7 @@ async function longPoll() {
       const reply = await api('/api/sync', { pos: state.pos, wait: LONG_WAIT_S, rev: long.rev }, { signal: ctl.signal });
       applySync(reply);
       if (typeof reply.rev !== 'number') { long.live = false; await sleep(60000); continue; } // a server without long poll
-      long.rev = reply.rev; long.live = true;
+      long.live = true;
       if (Date.now() - started < 1000) await sleep(1000); // never a tight loop
     } catch {
       long.live = false; await sleep(5000);
