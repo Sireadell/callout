@@ -10,13 +10,15 @@ let flashTimer;
 async function api(path, body, { signal } = {}) {
   if (window.__quiet) throw new Error('quiet');
   if (state.closed) throw new Error('closed'); // a late request would look like the app is open again
+  const token = state.token;
   const r = await fetch(`${SERVER}${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ token: state.token, ...body }), signal,
+    body: JSON.stringify({ token, ...body }), signal,
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
-    if (/unknown token|run ended/.test(j.error || '')) endedByServer();
+    // A late refusal for an earlier sign-in must not end the current one.
+    if (token === state.token && /unknown token|run ended/.test(j.error || '')) endedByServer();
     throw new Error(`${path} ${r.status} ${j.error || ''}`);
   }
   return r.json();
@@ -26,6 +28,8 @@ async function api(path, body, { signal } = {}) {
 function endedByServer() {
   if (!state.token) return;
   const listUp = onListPage();
+  ok.run += 1; clearInterval(voice.timer); state.pending = null;
+  bridge?.audioControl(false).catch(() => {}); // the microphone never stays open
   state.token = null; state.sync = null; state.join = null; state.ended = true; state.mode = 'glance'; state.reply = null; state.question = null; state.answering = null;
   bridge?.setLocalStorage('callout.token', '').catch(() => {});
   if (listUp) bridge.rebuildPageContainer(TEXT_PAGE()).catch(() => {}); else paint();
@@ -141,7 +145,10 @@ async function okWindow(kind = 'checkin') {
     if (kind === 'still' && !answered && ok.run === mine) { state.stillUnanswered = true; heartbeat(); } if (ok.run === mine && state.mode === 'ok') { state.mode = 'glance'; paint(); } }
 }
 function dueMs() { return state.sync ? state.sync.dueInMs - (Date.now() - state.syncedAt) : 1; }
+// A check-in that is due and not yet asked about comes before any question.
+const checkInWaiting = () => dueMs() <= 0 && !state.okTried;
 function watchDue() {
+  if (state.mode === 'question' && checkInWaiting()) return closeQuestion(); // the question stays in the menu
   if (state.mode !== 'glance' || !state.token || !state.sync || state.closed) return;
   if (dueMs() > 0) state.okTried = false;
   else if (!state.okTried) { state.okTried = true; okWindow(); }
@@ -190,7 +197,7 @@ async function sendClue(text) {
 
 // ---- no signal: keep check-ins and clues, send them in order when the server answers again ----
 // Each keeps the time it was made. The server caps that time (never the future, at most 30 minutes old).
-const isNetwork = (e) => e instanceof TypeError || e?.name === 'AbortError' || /quiet|closed$/.test(e?.message || '');
+const isNetwork = (e) => e instanceof TypeError || e?.name === 'AbortError' || /quiet|^closed$| 429 /.test(e?.message || '');
 function saveQueue() { bridge?.setLocalStorage('callout.queue', JSON.stringify(state.queue)).catch(() => {}); }
 function hold(path, body, label) {
   (state.queue ||= []).push({ path, body, at: Date.now() });
@@ -272,7 +279,7 @@ async function closePresets() {
 // Opens once per question, and only from the main screen. Skipped ones stay in the menu.
 const TAP_GUARD_MS = 800; // a tap meant for the main screen must not pick an answer
 function askIfNew() {
-  if (state.mode === 'glance' && state.token && state.question && state.askedId !== state.question.id) openQuestion(state.question);
+  if (!checkInWaiting() && state.mode === 'glance' && state.token && state.question && state.askedId !== state.question.id) openQuestion(state.question);
 }
 async function openQuestion(q) {
   state.mode = 'question'; state.askedId = q.id; state.openQ = q; state.openedAt = Date.now();
