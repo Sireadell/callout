@@ -8,6 +8,8 @@
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
     "start": "node server/index.js",
-    "proof": "node server/proof.js"
+    "proof": "node server/proof.js",
+    "panel": "node devpanel/panel.js",
+    "panel:proof": "node devpanel/proof.js"
   }
 }
