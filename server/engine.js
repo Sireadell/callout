@@ -205,8 +205,9 @@ export class Engine {
   // The glasses app says it is closing. Moving to the background is often brief, so that one waits a moment.
   _appClosed(run, v, reason) {
     v.lastSeen = this.clock.now();
-    if (v.closed || v.status !== 'active') return;
-    v.closed = { at: v.lastSeen, reason, told: false };
+    if (v.status !== 'active' || v.closed?.told) return;
+    v.closed ||= { at: v.lastSeen, told: false };
+    // Also covers a move to the background that turns into a real exit.
     if (reason !== 'foreground_exit') this._tellClosed(run, v);
   }
   _tellClosed(run, v) {

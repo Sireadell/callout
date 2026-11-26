@@ -34,6 +34,14 @@ test('a short move to the background is not reported; a long one is, after 20 se
   assert.equal(said(s.tg, /was closed/).length, 1);
 });
 
+test('a move to the background followed by a real exit is reported at once', async () => {
+  const s = setup();
+  const { token } = await start(s);
+  s.engine.heartbeat(token, { app: 'closed', reason: 'foreground_exit' });
+  s.engine.heartbeat(token, { app: 'closed', reason: 'system_exit' }); await settle();
+  assert.equal(said(s.tg, /was closed/).length, 1);
+});
+
 test('after the app is gone and no closed message arrived, "gone quiet" still fires', async () => {
   const s = setup();
   await start(s);
