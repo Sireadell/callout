@@ -167,7 +167,7 @@ Everyone who joins agrees to share their position with this group while the run 
   // The volunteer opens t.me/<bot>?start=<code>. A bot cannot message anyone first, so this
   // is the moment we learn where to reach them. The code stays valid for the glasses app.
   async function linkVolunteer(m, code) {
-    const p = engine.pairings[code];
+    const p = engine.findPairing(code);
     if (!p || p.used || engine.clock.now() > p.expiresAt) return say(m.chat.id, 'That link is not valid any more. Ask your coordinator for a new one.');
     const { v } = engine.findVolunteer(p.volunteerId);
     v.tgChatId = m.chat.id;

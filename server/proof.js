@@ -3,6 +3,7 @@
 import { Engine } from './engine.js';
 import { makeRouter } from './router.js';
 import { makeBot } from './bot.js';
+import { withoutPositions } from './persist.js';
 
 const clock = { t: Date.UTC(2026, 10, 29, 9, 0), now() { return this.t; } };
 const reacts = []; const sent = []; let id = 100;
@@ -52,6 +53,9 @@ await minutes(5);
 check('22 minutes: the whole team is told', said(/Still no check-in from Ana/));
 
 engine.checkIn(token, { pos: { lat: 51.51, lng: -0.12 } }); await tick();
+await router.updateLocations(Object.keys(engine.runs)[0]);
+const copy = JSON.stringify(withoutPositions(engine.snapshot()));
+check('during a run, the copy that may leave the server has no positions and no usable sign-in key', !/\d\.\d{3,}/.test(copy) && !copy.includes(token) && !copy.includes(code));
 check('a check-in clears it and says so', said(/has checked in again/));
 
 engine.heartbeat(token, { battery: 9, charging: false, worn: true }); await tick();
@@ -82,6 +86,7 @@ check('after the run: no positions, trails or tokens are kept', (() => {
   const v = Object.values(engine.runs[Object.keys(engine.runs)[0]].volunteers)[0];
   return v.pos === null && v.trail.length === 0 && Object.keys(engine.tokens).length === 0;
 })());
+check('after the run: no coordinate-shaped number is left anywhere in the saved state', !/\d\.\d{3,}/.test(JSON.stringify(engine.snapshot())));
 check('missed check-in notices say they go only to the team', sent.filter((m) => /Missed check-in|Still no check-in/.test(m.text || '')).every((m) => /only to your own team/.test(m.text)));
 check('nothing claims emergency or life-saving service', !sent.some((m) => /\b(SOS|dispatch|rescue|life.?sav|help is coming|diagnos|unconscious|injur)/i.test(m.text || '')));
 

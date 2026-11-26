@@ -2,6 +2,7 @@
 // jump forward with a fake clock. Everything is plain objects so a run can be
 // saved to a file and restored.
 import { randomBytes } from 'node:crypto';
+import { hashKey, isHash, noCoords, stripPositions } from './persist.js';
 
 export const DEFAULTS = Object.freeze({
   checkinMs: 15 * 60_000, // time between check-ins
@@ -70,13 +71,16 @@ export class Engine {
     run.volunteers[v.id] = v;
     const code = newCode();
     const expiresAt = this.clock.now() + this.cfg.pairingTtlMs;
-    this.pairings[code] = { runId, volunteerId: v.id, expiresAt, used: false };
+    this.pairings[hashKey(code)] = { runId, volunteerId: v.id, expiresAt, used: false };
     return { volunteer: v, code, expiresAt };
   }
 
+  // Codes and sign-in keys are only ever stored as hashes.
+  findPairing(code) { return this.pairings[hashKey(String(code || '').toUpperCase())]; }
+
   // The glasses app trades a single-use code for a token.
   pair(code) {
-    const p = this.pairings[String(code || '').toUpperCase()];
+    const p = this.findPairing(code);
     if (!p || p.used) throw new Error('code not valid');
     if (this.clock.now() > p.expiresAt) throw new Error('code expired');
     p.used = true;
@@ -87,7 +91,7 @@ export class Engine {
     v.lastCheckin = now;
     v.lastSeen = now;
     const token = randomBytes(24).toString('hex');
-    this.tokens[token] = { runId: run.id, volunteerId: v.id };
+    this.tokens[hashKey(token)] = { runId: run.id, volunteerId: v.id };
     this._emit(run, 'team', 'joined', `${v.name} joined (${v.area}).`);
     return { token, runId: run.id, name: v.name, area: v.area, nextDueAt: now + this.gap(run) };
   }
@@ -308,9 +312,9 @@ export class Engine {
     };
     run.status = 'ended';
     this._emit(run, 'team', 'debrief', this.debriefText(debrief));
-    for (const v of Object.values(run.volunteers)) { v.pos = null; v.trail = []; v.tgChatId = null; }
-    run.clues.forEach((c) => { c.pos = null; });
-    for (const [t, ref] of Object.entries(this.tokens)) if (ref.runId === run.id) delete this.tokens[t];
+    for (const v of Object.values(run.volunteers)) v.tgChatId = null;
+    stripPositions(run);
+    for (const keys of [this.tokens, this.pairings]) for (const [k, ref] of Object.entries(keys)) if (ref.runId === run.id) delete keys[k];
     return debrief;
   }
 
@@ -334,12 +338,20 @@ export class Engine {
 
   // ---------- saving ----------
   snapshot() { return JSON.parse(JSON.stringify({ teams: this.teams, runs: this.runs, pairings: this.pairings, tokens: this.tokens })); }
-  restore(s) { this.teams = s.teams || {}; this.runs = s.runs || {}; this.pairings = s.pairings || {}; this.tokens = s.tokens || {}; }
+  restore(s) {
+    // State saved by an earlier version may hold raw keys and positions in old text: both are cleaned on load.
+    const hashed = (keys = {}) => Object.fromEntries(Object.entries(keys).map(([k, v]) => [isHash(k) ? k : hashKey(k), v]));
+    this.teams = s.teams || {}; this.runs = s.runs || {}; this.pairings = hashed(s.pairings); this.tokens = hashed(s.tokens);
+    for (const run of Object.values(this.runs)) {
+      if (run.status !== 'active') stripPositions(run);
+      else for (const e of run.log || []) e.text = noCoords(e.text);
+    }
+  }
 
   // ---------- inside ----------
   _run(id) { const r = this.runs[id]; if (!r) throw new Error('unknown run'); return r; }
   _auth(token) {
-    const ref = this.tokens[token];
+    const ref = typeof token === 'string' ? this.tokens[hashKey(token)] : undefined;
     if (!ref) throw new Error('unknown token');
     const run = this._run(ref.runId);
     if (run.status !== 'active') throw new Error('run ended');
@@ -355,7 +367,7 @@ export class Engine {
     }
   }
   _emit(run, audience, kind, text, extra = {}) {
-    run.log.push({ at: this.clock.now(), kind, text });
+    run.log.push({ at: this.clock.now(), kind, text: noCoords(text) }); // the saved record never holds a position
     this.notify({ runId: run.id, teamId: run.teamId, audience, kind, text, ...extra });
   }
 }

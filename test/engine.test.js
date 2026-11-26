@@ -198,3 +198,46 @@ test('glasses off or in the case never produce a still notice', () => {
   e.heartbeat(token, { still: true, worn: false });
   assert.equal(notes.filter((n) => n.kind === 'still').length, 0);
 });
+
+const COORD = /\d\.\d{3,}/;
+
+test('after a run no position is left anywhere in the saved state, including old notice text', () => {
+  const { e, run, add, clock } = setup();
+  const ana = add('Ana', 'A1');
+  const pos = { lat: 51.50123, lng: -0.12456 };
+  e.clue(ana.token, { text: 'Person inside', pos });
+  e.needBackup(ana.token, { pos });
+  e.reply(run.id, { volunteerId: ana.id, text: 'Go to 51.50123, -0.12456' });
+  e.runs[run.id].live = { [ana.id]: { messageId: 5, lat: pos.lat, lng: pos.lng, at: 1 } };
+  clock.advance(30 * MIN); e.tick();
+  e.endRun(run.id);
+  assert.doesNotMatch(JSON.stringify(e.snapshot()), COORD);
+  assert.equal(e.runs[run.id].live[ana.id].messageId, 5);
+});
+
+test('sign-in keys and pairing codes are stored only as hashes and still work after a restore', () => {
+  const { e, run } = setup();
+  const a = e.addVolunteer(run.id, { name: 'Ana', area: 'A1' });
+  const b = e.addVolunteer(run.id, { name: 'Ben', area: 'A2' });
+  const { token } = e.pair(a.code);
+  const saved = JSON.stringify(e.snapshot());
+  for (const secret of [token, a.code, b.code]) assert.ok(!saved.includes(secret));
+  const again = new Engine({ clock: e.clock });
+  again.restore(JSON.parse(saved));
+  assert.ok(again.checkIn(token).nextDueAt > 0);
+  assert.equal(again.pair(b.code).name, 'Ben');
+});
+
+test('state saved by the earlier version is cleaned on load and old keys keep working', () => {
+  const { e, run } = setup();
+  const a = e.addVolunteer(run.id, { name: 'Ana', area: 'A1' });
+  const { token } = e.pair(a.code);
+  const old = e.snapshot();
+  old.tokens = { [token]: Object.values(old.tokens)[0] };
+  old.runs[run.id].log.push({ at: 1, kind: 'clue', text: 'Ana: door open [51.50123, -0.12456]' });
+  const again = new Engine({ clock: e.clock });
+  again.restore(old);
+  assert.ok(!JSON.stringify(again.snapshot()).includes(token));
+  assert.doesNotMatch(JSON.stringify(again.snapshot().runs[run.id].log), COORD);
+  again.sync(token);
+});

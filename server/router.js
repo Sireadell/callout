@@ -176,8 +176,8 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
           live[v.id] = { messageId: m.message_id, lat: v.pos.lat, lng: v.pos.lng, at: now };
           (run.msgIndex ||= {})[`${chat}:${label.message_id}`] = v.id;
           (run.posMsgs ||= []).push([chat, label.message_id], [chat, m.message_id]);
-        } else if (L.messageId && now - L.at >= MIN_GAP_MS && metres(L, v.pos) >= MIN_MOVE_M) {
-          const heading = bearing(L, v.pos);
+        } else if (L.messageId && now - L.at >= MIN_GAP_MS && (L.lat === undefined || metres(L, v.pos) >= MIN_MOVE_M)) {
+          const heading = L.lat === undefined ? undefined : bearing(L, v.pos); // a restored copy has no last point
           await telegram.editLiveLocation(chat, L.messageId, v.pos.lat, v.pos.lng, heading);
           Object.assign(L, { lat: v.pos.lat, lng: v.pos.lng, at: now });
         }
