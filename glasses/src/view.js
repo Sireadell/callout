@@ -65,6 +65,17 @@ function warnings(state, now) {
   return out;
 }
 
+// As many whole warnings as fit on one line, in order of importance. One is never cut in half.
+export function warnLine(list) {
+  let line = '';
+  for (const w of list) {
+    const next = line ? `${line}  ${w}` : w;
+    if (next.length > COLS) break;
+    line = next;
+  }
+  return line || String(list[0] || '').slice(0, COLS);
+}
+
 // Before pairing: a 4 digit join code from the server, with the phone page as the other route.
 function unpairedView(state, flash) {
   const j = state.join || {};
@@ -107,7 +118,7 @@ export function glanceView(state, now = Date.now()) {
     main = [countdown(due), '', String(s.area).slice(0, COLS * 2), ...(flash.length ? ['', ...flash] : [])];
   }
   const first = reply && due >= 0 ? countdown(due) : [teamLine, String(s.runName).slice(0, 18)].filter(Boolean).join(' ━ ');
-  const status = [first.slice(0, COLS), warn.join('  ').slice(0, COLS)];
+  const status = [first.slice(0, COLS), warnLine(warn)];
   const hint = reply?.tappable ? 'Tap: got it.  Hold: talk.'
     : state.lastReply && state.sides ? 'Tap: check in. Left: reply. Hold: talk.'
       : 'Tap: check in. Hold: talk. Double: exit.';
@@ -117,7 +128,7 @@ export function glanceView(state, now = Date.now()) {
 // Screens opened by an action keep the countdown (and any warning) in the dim box underneath,
 // and a short answer to a gesture takes the hint line.
 function action(state, now, main, hint) {
-  const status = state.sync ? [countdown(dueIn(state, now)), warnings(state, now).join('  ').slice(0, COLS)] : [];
+  const status = state.sync ? [countdown(dueIn(state, now)), warnLine(warnings(state, now))] : [];
   return screen(main, status, (state.flashMode === state.mode && state.flash) || hint);
 }
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { glanceView, view, fit, BOXES, COLS, fmtClock, MENU, PRESET_CLUES, quickClues, confirmScreen, listenScreen, holdScreen, thinkScreen, isOk, okScreen, stillScreen, backupScreen } from '../src/view.js';
+import { glanceView, view, fit, BOXES, COLS, fmtClock, MENU, PRESET_CLUES, quickClues, confirmScreen, listenScreen, holdScreen, thinkScreen, isOk, okScreen, stillScreen, backupScreen, warnLine } from '../src/view.js';
 
 const all = (v) => Object.values(v).join(' ');
 const glanceText = (state, now) => all(glanceView(state, now));
@@ -143,4 +143,10 @@ test('the join screens say what to send, and fit', () => {
   assert.match(glanceView({ join: { phase: 'expired' } }).hint, /Tap: new code/);
   assert.match(glanceView({ join: { phase: 'error' } }).status, /Try again in a minute/);
   fits(glanceView({ join: { phase: 'claimed', name: 'x'.repeat(200), team: 'y'.repeat(200) }, flash: 'z '.repeat(100) }));
+});
+
+test('warnings that do not fit are left out whole, never cut mid-word', () => {
+  assert.equal(warnLine(['▲ Glasses battery 9%', '○ No signal. Will retry.']), '▲ Glasses battery 9%');
+  assert.equal(warnLine(['○ 2 waiting to send', '○ Question waiting']), '○ 2 waiting to send  ○ Question waiting');
+  assert.equal(warnLine([]), '');
 });
