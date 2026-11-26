@@ -44,6 +44,6 @@ node devpanel/proof.js
 
 Say "dev panel" on screen whenever a capture from it is shown.
 
-## One known gap it shows
+## The "back online" line
 
-The "back online" notice is sent only when the 30 second heartbeat is the first call to reach the server after a quiet spell. A sync or a held item arriving first clears the quiet flag without a notice. The check prints this as a NOTE and does not fail on it.
+With server code that only says "back online" after a 30 second heartbeat, the check prints this item as a NOTE and does not fail on it. Server code that says it whichever call arrives first shows PASS.
