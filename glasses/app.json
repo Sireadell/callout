@@ -12,6 +12,6 @@
     { "name": "location", "desc": "Adds your position to check-ins during a run." },
     { "name": "camera", "desc": "Lets you add a photo to a clue." },
     { "name": "album", "desc": "Lets you add a photo from your album to a clue." },
-    { "name": "g2-microphone", "desc": "Opens when you tap to speak a clue, and for three short rounds when a check-in is due or the app asks Still there? Audio is turned into text and not kept." }
+    { "name": "g2-microphone", "desc": "Opens while you hold to talk or pick Clue by voice, and for three short rounds when a check-in is due or the app asks Still there? Audio is turned into text and not kept." }
   ]
 }

@@ -144,6 +144,18 @@ export function isOk(text) {
   if (!t || t.split(/\s+/).length > 5 || REFUSE.test(t)) return false;
   return /\b(ok|okay|here|checking in|check in|all good|fine|yes)\b/i.test(t.replace(/\./g, ''));
 }
+// What a spoken phrase asks for. The server names it; an older server sends only the words,
+// which are then treated as a clue. A phrase that denies is never turned into a check-in.
+export function voiceAction(res) {
+  const text = String(res?.text || '').trim();
+  const type = res?.intent?.type;
+  if (!text || type === 'none') return { type: 'none' };
+  if (type === 'cancel' || /^cancel[.!]?$/i.test(text)) return { type: 'cancel' };
+  if (type === 'checkin') return REFUSE.test(text) ? { type: 'clue', text } : { type: 'checkin' };
+  if (type === 'backup') return { type: 'backup' };
+  if (type === 'quick_clue' && res.intent.clue) return { type: 'clue', text: String(res.intent.clue) };
+  return { type: 'clue', text };
+}
 export const okScreen = (round) => ({ main: ['▲ Check-in due', '', 'Say "OK" or tap.', `Listening ${round} of 3.`], hint: 'Tap: check in. Swipe: skip.' });
 export const stillScreen = (round) => ({ main: ['Still there?', '', 'Say "OK" or tap.', `Listening ${round} of 3.`], hint: 'Tap: yes. Swipe: skip.' });
 

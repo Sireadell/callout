@@ -1,5 +1,5 @@
 import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
-import { view, BOXES, MENU, PRESET_CLUES, HOLD_MAX_S, HOLD_MIN_MS, holdScreen, listenScreen, thinkScreen, confirmScreen, isOk, okScreen, stillScreen, backupScreen } from './view.js';
+import { view, BOXES, MENU, PRESET_CLUES, HOLD_MAX_S, HOLD_MIN_MS, holdScreen, listenScreen, thinkScreen, confirmScreen, isOk, voiceAction, okScreen, stillScreen, backupScreen } from './view.js';
 import { makeStillness } from './motion.js';
 
 const SERVER = import.meta.env?.VITE_SERVER_URL || localStorage.getItem('callout.server') || 'http://localhost:8787';
@@ -118,10 +118,15 @@ async function okWindow(kind = 'checkin') {
       // Skipped or replaced (for example by hold to talk): the microphone now belongs to someone else.
       if (state.mode !== 'ok' || ok.run !== mine) return;
       await bridge.audioControl(false);
-      const { text } = await api('/api/voice', { audio: toBase64(joinFrames()) }).catch(() => ({ text: '' }));
-      if (ok.run === mine && isOk(text)) {
+      const res = await api('/api/voice', { audio: toBase64(joinFrames()) }).catch(() => ({ text: '' }));
+      if (ok.run !== mine) return;
+      const asked = voiceAction(res).type;
+      if (isOk(res.text) || asked === 'checkin' || asked === 'backup') {
         answered = true; state.mode = 'glance';
-        if (kind === 'still') { motion.reset(); state.stillUnanswered = false; flash('● Thanks'); } else await checkIn();
+        if (kind === 'still') { motion.reset(); state.stillUnanswered = false; }
+        if (asked === 'backup') askBackup(); // only opens the confirm screen
+        else if (kind === 'still') flash('● Thanks');
+        else await checkIn();
         return;
       }
     }
@@ -149,11 +154,15 @@ async function stopTalk() {
   const left = () => voice.id !== id || state.mode !== 'think'; // left through the menu while waiting
   await bridge.audioControl(false);
   try {
-    const { text } = await api('/api/voice', { audio: toBase64(joinFrames()) });
+    const res = await api('/api/voice', { audio: toBase64(joinFrames()) });
     if (left()) return;
-    if (!text) return cancelClue('Heard nothing. Try again');
-    if (/^cancel[.!]?$/i.test(text.trim())) return cancelClue('Cancelled');
-    showConfirm(text);
+    const asked = voiceAction(res);
+    if (asked.type === 'none') return cancelClue('Heard nothing. Try again');
+    if (asked.type === 'cancel') return cancelClue('Cancelled');
+    if (asked.type === 'clue') return showConfirm(asked.text);
+    state.mode = 'glance';
+    if (asked.type === 'backup') return askBackup(); // never sent from voice alone
+    return checkIn();
   } catch { if (!left()) cancelClue('▲ Could not hear you. Try again'); }
 }
 
