@@ -58,9 +58,11 @@ export const confirmText = (text, secs) => ['Your clue:', '', `"${String(text).s
 
 
 // The "say OK" window opens when a check-in is overdue. Short answers only, so chatter does not count.
+// Anything that denies, or asks for help, never counts: "not OK" must not check anyone in.
+const REFUSE = /\b(no|not|nope|never|cannot|help|hurt)\b|n['’]t\b|\b(isnt|arent|dont|cant|wont|aint)\b/i;
 export function isOk(text) {
   const t = String(text || '').trim();
-  if (!t || t.split(/\s+/).length > 5) return false;
+  if (!t || t.split(/\s+/).length > 5 || REFUSE.test(t)) return false;
   return /\b(ok|okay|here|checking in|check in|all good|fine|yes)\b/i.test(t.replace(/\./g, ''));
 }
 export const okText = (round) => ['▲ Check-in due', '', 'Say "OK" or tap.', `Listening ${round} of 3. Swipe to skip.`].join('\n');

@@ -68,3 +68,8 @@ test('the lens says how many items wait for signal', () => {
   const t = glanceText({ token: 't', syncedAt: 0, queue: [{}, {}], sync: { runName: 'E', area: 'A', dueInMs: 1000, team: [] } }, 0);
   assert.match(t, /2 waiting to send/);
 });
+
+test('an answer that denies or asks for help never checks in', () => {
+  ["I'm not OK", 'not ok', 'Not okay.', "I'm not fine", 'no', 'No, not here', "I can't check in", 'I can’t, not fine', "this isn't ok", 'nope', 'never fine', 'help', 'OK help me', 'hurt but here', 'I am not here'].forEach((t) => assert.ok(!isOk(t), t));
+  ['ok', 'OK.', 'yes', "I'm fine", 'okay now'].forEach((t) => assert.ok(isOk(t), t));
+});
