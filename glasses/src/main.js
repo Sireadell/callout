@@ -9,6 +9,7 @@ let flashTimer;
 
 async function api(path, body, { signal } = {}) {
   if (window.__quiet) throw new Error('quiet');
+  if (state.closed) throw new Error('closed'); // a late request would look like the app is open again
   const r = await fetch(`${SERVER}${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ token: state.token, ...body }), signal,
@@ -141,7 +142,7 @@ async function okWindow(kind = 'checkin') {
 }
 function dueMs() { return state.sync ? state.sync.dueInMs - (Date.now() - state.syncedAt) : 1; }
 function watchDue() {
-  if (state.mode !== 'glance' || !state.token || !state.sync) return;
+  if (state.mode !== 'glance' || !state.token || !state.sync || state.closed) return;
   if (dueMs() > 0) state.okTried = false;
   else if (!state.okTried) { state.okTried = true; okWindow(); }
   // No head movement for a while: ask once, then wait for movement before asking again.
@@ -189,7 +190,7 @@ async function sendClue(text) {
 
 // ---- no signal: keep check-ins and clues, send them in order when the server answers again ----
 // Each keeps the time it was made. The server caps that time (never the future, at most 30 minutes old).
-const isNetwork = (e) => e instanceof TypeError || e?.name === 'AbortError' || /quiet/.test(e?.message || '');
+const isNetwork = (e) => e instanceof TypeError || e?.name === 'AbortError' || /quiet|closed$/.test(e?.message || '');
 function saveQueue() { bridge?.setLocalStorage('callout.queue', JSON.stringify(state.queue)).catch(() => {}); }
 function hold(path, body, label) {
   (state.queue ||= []).push({ path, body, at: Date.now() });
@@ -333,7 +334,7 @@ async function pos() {
 }
 
 async function sync() {
-  if (!state.token) return;
+  if (!state.token || state.closed) return;
   try {
     applySync(await api('/api/sync', { pos: await pos() }));
   } catch { /* offline: keep the last screen. The server notices if we stay silent. */ }
@@ -366,7 +367,7 @@ const long = { live: false, rev: -1, ctl: null };
 const seenReplies = new Set();
 async function longPoll() {
   for (;;) {
-    if (!state.token) { long.live = false; await sleep(1000); continue; }
+    if (!state.token || state.closed) { long.live = false; await sleep(1000); continue; }
     const started = Date.now();
     const ctl = new AbortController(); long.ctl = ctl;
     const giveUp = setTimeout(() => ctl.abort(), (LONG_WAIT_S + 20) * 1000);
@@ -406,7 +407,7 @@ async function checkIn() {
 }
 
 async function heartbeat() {
-  if (!state.token) return;
+  if (!state.token || state.closed) return;
   const d = state.device;
   try {
     await api('/api/heartbeat', { battery: d.batteryLevel, charging: d.isCharging, inCase: d.isInCase, worn: d.isWearing, still: state.stillUnanswered || undefined, pos: await pos() });
@@ -422,7 +423,7 @@ async function pair(code) {
   await adopt(j.token);
 }
 async function adopt(token) {
-  state.token = token; state.ended = false; state.join = null; join.id += 1; long.rev = -1;
+  state.token = token; state.signedOut = false; state.ended = false; state.join = null; join.id += 1; long.rev = -1;
   await bridge.setLocalStorage('callout.token', token); phoneStatus();
   await sync(); await heartbeat();
 }
@@ -468,10 +469,29 @@ function tapUnpaired() {
   return requestJoin();
 }
 
+// ---- the app is closed or put away: say so once, then stay silent until it is back ----
+const CLOSED = { [OsEventTypeList.FOREGROUND_EXIT_EVENT]: 'foreground_exit', [OsEventTypeList.ABNORMAL_EXIT_EVENT]: 'abnormal_exit', [OsEventTypeList.SYSTEM_EXIT_EVENT]: 'system_exit' };
+function appClosed(reason) {
+  if (state.closed) return;
+  if (!['glance', 'presets', 'question'].includes(state.mode)) cancelClue(''); // the microphone never stays open
+  state.closed = true; long.live = false; long.ctl?.abort();
+  if (!state.token || state.signedOut || window.__quiet) return;
+  // keepalive lets the request finish even if the page is going away. Not verified on a phone.
+  fetch(`${SERVER}/api/heartbeat`, {
+    method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: state.token, app: 'closed', reason }),
+  }).catch(() => {});
+}
+function appOpen() {
+  if (state.closed) { state.closed = false; motion.reset(); bridge.imuControl(true, ImuReportPace.P1000).catch(() => {}); }
+  sync(); heartbeat();
+}
+
 // Sign out: stops this person's check-in notices, then the system exit dialog.
 async function signOut() {
   flash('○ Signing out...', 8000);
   try { await api('/api/signout', {}); } catch { return flash('▲ Not signed out. Try again'); }
+  state.signedOut = true; // no "app closed" note after signing out
   bridge.shutDownPageContainer(1);
 }
 
@@ -517,7 +537,7 @@ function onEvent(e) {
     if ((state.mode === 'listen' || state.mode === 'ok') && e.audioEvent.speakerRole !== AudioSpeakerRole.Other) voice.frames.push(e.audioEvent.audioPcm);
     return;
   }
-  if (e.menuItemClickEvent) return onMenu(e.menuItemClickEvent.itemID);
+  if (e.menuItemClickEvent) { if (state.closed) appOpen(); return onMenu(e.menuItemClickEvent.itemID); }
   const ev = e.textEvent || e.sysEvent || e.listEvent;
   if (!ev) return;
   // A plain tap arrives with no eventType (click is code 0, which the host leaves out).
@@ -525,7 +545,9 @@ function onEvent(e) {
   const click = t === OsEventTypeList.CLICK_EVENT;
   const dbl = t === OsEventTypeList.DOUBLE_CLICK_EVENT;
   const swipe = t === OsEventTypeList.SCROLL_TOP_EVENT || t === OsEventTypeList.SCROLL_BOTTOM_EVENT;
-  if (t === OsEventTypeList.FOREGROUND_ENTER_EVENT) { sync(); heartbeat(); return; }
+  if (t === OsEventTypeList.FOREGROUND_ENTER_EVENT) return appOpen();
+  if (CLOSED[t]) return appClosed(CLOSED[t]);
+  if (state.closed) appOpen(); // a gesture means the app is in use again
   if (t === OsEventTypeList.LONG_PRESS_EVENT) return onHold();
   if (t === OsEventTypeList.LONG_PRESS_RELEASE_EVENT) return releaseTalk();
   if (state.mode === 'listen') { if (click) stopTalk(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
