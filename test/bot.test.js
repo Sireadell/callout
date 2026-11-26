@@ -60,7 +60,7 @@ test('a clue shows reply buttons; pressing one puts the line on the lens', async
   await new Promise((r) => setImmediate(r));
   const clueMsg = tg.out.filter((m) => m.text?.includes('Person inside')).at(-1);
   const buttons = clueMsg.extra.reply_markup.inline_keyboard.flat();
-  assert.equal(buttons.length, PRESETS.length);
+  assert.equal(buttons.length, PRESETS.length + 1); // plus Ask a question
   await bot.handle({ callback_query: { id: 'q1', data: buttons[0].callback_data, from: { id: 7, first_name: 'Sam' }, message: { chat: { id: -500 } } } });
   assert.equal(engine.sync(token).replies[0].text, PRESETS[0]);
   assert.match(tg.answers.at(-1)[1], /Sent to Ana/);
@@ -188,7 +188,7 @@ test('a clue with a position is a map pin with the reply buttons on it', async (
   const pin = tg.out.find((m) => m.venue);
   assert.deepEqual(pin.venue, [51.5, -0.1]);
   assert.equal(pin.text, 'Road blocked @ Ana (Area A1)');
-  assert.equal(pin.extra.reply_markup.inline_keyboard.length, PRESETS.length);
+  assert.equal(pin.extra.reply_markup.inline_keyboard.length, PRESETS.length + 1);
 });
 
 test('live location starts once, moves only after 25 m and a minute, with a heading', async () => {

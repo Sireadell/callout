@@ -14,6 +14,7 @@ export const DEFAULTS = Object.freeze({
   trailMax: 500,
 });
 
+const QUESTION_TTL_MS = 15 * 60_000;
 export const QUICK_CLUES = Object.freeze(['All done', 'No answer', 'Spoke to them', 'Access blocked']);
 
 const ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789'; // no 0/O/1/I/L
@@ -206,7 +207,7 @@ export class Engine {
     return {
       runName: run.name, area: v.area, dueInMs: v.lastCheckin + this.gap(run) - now,
       step: v.step, replies: replies.map((r) => ({ id: r.id, text: r.short || r.text, full: r.text, by: r.by })),
-      team: this.teamStatus(run.id), quickClues: this.quickClues(run),
+      team: this.teamStatus(run.id), quickClues: this.quickClues(run), question: this._openQuestion(v),
     };
   }
 
@@ -269,6 +270,38 @@ export class Engine {
     const r = { id: newId('rep'), volunteerId, text: String(text).slice(0, 500), short: short ? String(short).slice(0, 80) : undefined, by, src, at: this.clock.now(), delivered: false, confirmedAt: null };
     run.replies.push(r);
     return r;
+  }
+
+  // A coordinator question for the lens, with answers the volunteer can send in one tap.
+  // A volunteer has one open question at a time: a new one replaces it.
+  ask(runId, { volunteerId, text, by = 'coordinator', answers = [], src }) {
+    const run = this._run(runId);
+    const v = run.volunteers[volunteerId];
+    if (!v) throw new Error('unknown volunteer');
+    const line = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!line) throw new Error('empty question');
+    v.question = { id: newId('q'), text: line.slice(0, 80), by, answers: answers.slice(0, 3).map((a) => String(a).slice(0, 16)), src, at: this.clock.now(), answeredAt: null };
+    return v.question;
+  }
+
+  // A tapped or spoken answer. It goes back to whoever asked, as a reply to the question. It is not a check-in.
+  answer(token, { questionId, answer, at } = {}) {
+    const { run, v } = this._auth(token);
+    this._touch(v);
+    const q = v.question;
+    if (!q || q.id !== questionId) throw new Error('unknown question');
+    if (q.answeredAt) return; // a second send changes nothing
+    if (this._when({ lastCheckin: 0 }, at) - q.at > QUESTION_TTL_MS) throw new Error('unknown question');
+    const text = String(answer || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!text) throw new Error('empty answer');
+    q.answeredAt = this.clock.now();
+    this._emit(run, 'coordinator', 'answer', `${v.name} (${v.area}) answered "${q.text}": ${text}`, { volunteerId: v.id, src: q.src });
+  }
+
+  _openQuestion(v) {
+    const q = v.question;
+    if (!q || q.answeredAt || this.clock.now() - q.at > QUESTION_TTL_MS) return null;
+    return { id: q.id, text: q.text, by: q.by, answers: q.answers };
   }
 
   // A notice from outside the glasses flow (summary, run closed). Works on finished runs too.

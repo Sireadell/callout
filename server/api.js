@@ -30,6 +30,7 @@ export function makeRoutes({ engine, stt, miniapp = null, env = process.env }) {
         : await stt.transcribe(Buffer.from(String(b.audio || ''), 'base64'));
       return { text, intent: intentOf(text, engine.quickClues(run)) };
     },
+    'POST /api/answer': (b) => { engine.answer(b.token, { questionId: b.questionId, answer: b.answer, at: b.at }); return { ok: true }; },
     // A photo for a clue already sent: base64 JPEG, passed on to the chat and not kept.
     'POST /api/photo': (b) => engine.attachPhoto(b.token, { clueId: b.clueId, bytes: Buffer.from(String(b.image || ''), 'base64') }),
     'POST /app/api/state': (b) => { if (!miniapp) throw new Error('not set up'); return miniapp.state(b.initData); },

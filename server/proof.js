@@ -36,7 +36,7 @@ check('a used code cannot be used twice', (() => { try { engine.pair(code); retu
 
 engine.clue(token, { text: 'Person inside', pos: { lat: 51.5, lng: -0.12 } }); await tick();
 const pin = sent.find((m) => /Person inside/.test(m.text || ''));
-check('a clue arrives in the group as a map pin with four reply buttons', pin?.extra.reply_markup?.inline_keyboard.flat().length === 4);
+check('a clue arrives in the group as a map pin with four reply buttons and an Ask button', pin?.extra.reply_markup?.inline_keyboard.flat().length === 5);
 check('clue messages cannot be forwarded or saved (protected)', pin?.extra.protect_content === true);
 
 await say('Go back to the road', { reply_to_message: { message_id: pin.message_id } });
@@ -44,6 +44,12 @@ const r = engine.sync(token).replies[0];
 check('a coordinator reply to the clue appears on the lens', r?.text === 'Go back to the road');
 engine.confirmReply(token, r.id); await tick();
 check('the volunteer confirms the reply and the coordinator sees an eyes reaction on their own message', reacts.some(([, , e]) => e === '👀'));
+
+await say('/ask Ana how many people?');
+const q = engine.sync(token).question;
+engine.answer(token, { questionId: q.id, answer: q.answers[2] }); await tick();
+const answered = sent.find((m) => /answered "how many people\?": 2 or more/.test(m.text || ''));
+check('a coordinator question shows on the lens with answers, and one tap replies under the question', q.answers.length === 3 && answered?.extra.reply_to_message_id > 0);
 
 await minutes(15 + 2);
 check('17 minutes without a check-in: the coordinator gets a missed check-in notice', said(/Missed check-in notice: Ana/));

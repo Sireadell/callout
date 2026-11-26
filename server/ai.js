@@ -3,6 +3,29 @@
 const SYSTEM_LINE = 'Rewrite the message as one plain line of at most 60 characters for a small glasses display. Keep names, places and numbers. No quotes, no emoji. Reply with the line only.';
 const SYSTEM_DEBRIEF = 'Summarise a volunteer search run in at most 3 short plain sentences from the facts given. State only what the facts say. Do not guess, diagnose or give advice. Reply with the sentences only.';
 
+const SYSTEM_ANSWERS = 'A team coordinator asks a field volunteer a question. Give 3 short answers the volunteer could send, one per line, each at most 16 characters. Plain words, no numbering, no emoji, no medical or emergency wording. Reply with the lines only.';
+// Words an AI suggestion may never contain: nothing that sounds like rescue, dispatch or a medical judgement.
+export const UNSAFE = /\b(sos|911|999|112|emergency|ambulance|rescu\w*|dispatch\w*|diagnos\w*|help is coming|on the way to save|dead|dying|injur\w*|unconscious|safe now|you are safe)\b/i;
+
+// Short suggestions, one per line, from an AI answer: cleaned, guarded, never longer than asked.
+export function cleanLines(text, max, count) {
+  const lines = String(text || '').split('\n')
+    .map((l) => l.replace(/^[\s\d.)*•-]+(?=\D)/, '').replace(/^["']+|["'.]+$/g, '').trim())
+    .filter((l) => l && l.length <= max && !UNSAFE.test(l) && /^[\x20-\x7E]+$/.test(l));
+  return [...new Set(lines)].slice(0, count);
+}
+
+// Common question shapes need no AI.
+export function ruleAnswers(question) {
+  const q = String(question || '').toLowerCase().trim();
+  if (/^how (many|much)\b/.test(q)) return ['None', '1', '2 or more'];
+  if (/^(how long|when)\b|\beta\b/.test(q)) return ['5 min', '15 min', '30 min'];
+  if (/^(is|are|am|was|were|do|does|did|can|could|have|has|had|will|would|should|any|anyone|anybody|you ok)\b/.test(q)) return ['Yes', 'No', 'Not sure'];
+  return null;
+}
+const OPEN_ANSWERS = ['Not sure', 'Give me 5 min', 'Call me'];
+export const suggestAnswers = (question) => ruleAnswers(question) || [...OPEN_ANSWERS];
+
 // No key: first sentence, cut at a word boundary.
 export function trimLine(text, max = 60) {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
@@ -61,6 +84,13 @@ export function makeAi({ anthropicKey, openrouterKey, openrouterModel = 'anthrop
       if (t.length <= 60) return t;
       try { const s = (await ask(SYSTEM_LINE, t, 60)).replace(/^["']|["']$/g, ''); if (s) return s.slice(0, 80); } catch { /* fall back */ }
       return trimLine(t);
+    },
+    // Up to 3 one-tap answers for a coordinator question. Word rules first, AI only for open questions.
+    async answers(question) {
+      const ruled = ruleAnswers(question);
+      if (ruled) return ruled;
+      try { const lines = cleanLines(await ask(SYSTEM_ANSWERS, String(question).slice(0, 300), 60), 16, 3); if (lines.length >= 2) return lines; } catch { /* fall back */ }
+      return [...OPEN_ANSWERS];
     },
     // Debrief paragraph. Returns '' when no key or on failure: the debrief still goes out without it.
     async debrief(d) {

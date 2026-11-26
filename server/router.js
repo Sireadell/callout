@@ -2,7 +2,7 @@
 // board per run, edited in place. Also keeps live locations and the run's topic.
 const ICON = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '○', out: '○' };
 // Loud notices buzz phones. Everything else arrives quietly.
-const LOUD = new Set(['missed_checkin', 'missed_checkin_team', 'went_silent', 'still', 'need_backup', 'nudge_overdue']);
+const LOUD = new Set(['missed_checkin', 'missed_checkin_team', 'went_silent', 'still', 'need_backup', 'nudge_overdue', 'answer']);
 // Notices that carry a position or a person's details cannot be forwarded or saved from the chat.
 // Notices that show a position. With "/end clear" they are deleted from the chat after the run.
 const POS_KINDS = new Set(['clue', 'clue_photo', 'need_backup', 'missed_checkin', 'missed_checkin_team', 'went_silent', 'battery_low', 'glasses_off', 'still', 'back_in_touch']);
@@ -41,9 +41,10 @@ export function boardText(engine, runId) {
 export function makeRouter({ engine, telegram = null, discord = null, log = console.error }) {
   const keyboardFor = (n) => {
     if (n.kind === 'nudge_overdue') return { inline_keyboard: [[{ text: 'Check in', callback_data: `ci|${n.volunteerId}` }]] };
-    if (['clue', 'missed_checkin', 'went_silent', 'need_backup', 'missed_checkin_team'].includes(n.kind)) {
+    if (['clue', 'answer', 'missed_checkin', 'went_silent', 'need_backup', 'missed_checkin_team'].includes(n.kind)) {
       const rows = PRESETS.map((p, i) => [{ text: p, callback_data: `r|${n.volunteerId}|${i}` }]);
-      if (n.kind !== 'clue' && n.kind !== 'need_backup') rows.push([{ text: 'Reached them, mark OK', callback_data: `ok|${n.volunteerId}` }]);
+      if (['clue', 'answer', 'need_backup'].includes(n.kind)) rows.push([{ text: 'Ask a question', callback_data: `a|${n.volunteerId}` }]);
+      else rows.push([{ text: 'Reached them, mark OK', callback_data: `ok|${n.volunteerId}` }]);
       return { inline_keyboard: rows };
     }
     return undefined;
@@ -71,6 +72,14 @@ export function makeRouter({ engine, telegram = null, discord = null, log = cons
       if (!v.tgChatId) return;
       const sentPrivate = await telegram.send(v.tgChatId, n.text, { reply_markup: keyboardFor(n), disable_notification: !LOUD.has(n.kind), protect_content: true });
       return sentPrivate;
+    }
+    // An answer goes back to whoever asked, under their question. If that fails it takes the usual route.
+    if (n.kind === 'answer' && n.src) {
+      try {
+        const sent = await telegram.send(n.src.chat, n.text, { reply_markup: keyboardFor(n), protect_content: true, reply_to_message_id: n.src.id, allow_sending_without_reply: true });
+        if (run) (run.msgIndex ||= {})[`${n.src.chat}:${sent.message_id}`] = n.volunteerId;
+        return sent;
+      } catch (e) { log('answer not threaded:', e.message); }
     }
     let toCoordinator = n.audience === 'coordinator' && t.coordinatorChatId != null;
     let chat = toCoordinator ? t.coordinatorChatId : t.chatId;

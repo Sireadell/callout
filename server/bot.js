@@ -2,7 +2,7 @@
 // replies to the bot's messages and button presses all reach the bot.
 import { PRESETS, boardText } from './router.js';
 import { parseSheetId } from './sheet.js';
-import { trimLine } from './ai.js';
+import { trimLine, suggestAnswers } from './ai.js';
 
 const HELP = [
   'Callout team check-in bot.',
@@ -13,6 +13,7 @@ const HELP = [
   '/interval <minutes>  set the check-in gap for this run (5 to 60)',
   '/clues a, b, c, d  set the one-tap clues on the lens (/clues default to reset)',
   '/reply <name> <text>  send a line to a volunteer\'s lens (or reply to their clue)',
+  '/ask <name> <question>  ask on a volunteer\'s lens, with one-tap answers',
   '/app  open the team dashboard (in a private chat with me)',
   '/sheet <link>  connect a Google Sheet (tab Volunteers: name, area)',
   '/import  add every volunteer listed in the sheet',
@@ -21,7 +22,7 @@ const HELP = [
 ].join('\n');
 
 // Said when a run starts on a server with an AI key.
-export const AI_NOTICE = 'AI is on: clue words (volunteer names and positions are not added) are sent to an AI service to write the summary, and long coordinator replies to shorten them.';
+export const AI_NOTICE = 'AI is on: clue words are sent to an AI service to write the summary, long coordinator replies to shorten them, and some coordinator questions to suggest answers. Volunteer names and positions are not added.';
 
 // What the bot needs as a group admin, and why.
 const RIGHTS = [
@@ -35,14 +36,14 @@ export const COMMANDS = {
   coordinator: [
     { command: 'team', description: 'Make this group a team' }, { command: 'run', description: 'Start a run' },
     { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' }, { command: 'interval', description: 'Check-in gap in minutes (5 to 60)' }, { command: 'clues', description: 'Set the one-tap clues on the lens' },
-    { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'app', description: 'Open the team dashboard' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
+    { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'ask', description: 'Ask a volunteer a question' }, { command: 'app', description: 'Open the team dashboard' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
     { command: 'end', description: 'Finish the run' },
     { command: 'coordinator', description: 'Send private notices to me' }, { command: 'help', description: 'List the commands' },
   ],
 };
 
 // Commands that change a run. Everyone in the group can read the board; only the coordinator or a group admin can do these.
-const COORD_ONLY = new Set(['coordinator', 'clues', 'interval', 'run', 'add', 'reply', 'sheet', 'import', 'end']);
+const COORD_ONLY = new Set(['coordinator', 'ask', 'clues', 'interval', 'run', 'add', 'reply', 'sheet', 'import', 'end']);
 
 export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
@@ -145,10 +146,13 @@ ${AI_NOTICE}` : ''}`);
       try { return say(chatId, show(engine.setQuickClues(run.id, /^default$/i.test(arg.trim()) ? [] : arg.split(',')))); }
       catch (e) { return say(chatId, `Use: /clues with ${e.message}, separated by commas.`); }
     }
-    if (name === 'reply') {
-      const v = Object.values(run.volunteers).find((x) => arg.toLowerCase().startsWith(x.name.toLowerCase() + ' '));
-      if (!v) return say(chatId, 'Use: /reply <volunteer name> <text>');
-      await lensReply(run, v.id, arg.slice(v.name.length + 1), m.from.first_name || 'coordinator', { chat: chatId, id: m.message_id });
+    if (name === 'reply' || name === 'ask') {
+      // The longest matching name wins, so "Ana Maria" is not read as "Ana".
+      const v = Object.values(run.volunteers).filter((x) => arg.toLowerCase().startsWith(x.name.toLowerCase() + ' ')).sort((a, b) => b.name.length - a.name.length)[0];
+      if (!v) return say(chatId, name === 'ask' ? 'Use: /ask <volunteer name> <question>' : 'Use: /reply <volunteer name> <text>');
+      const line = arg.slice(v.name.length + 1).trim();
+      const send = name === 'ask' ? lensAsk : lensReply;
+      await send(run, v.id, line, m.from.first_name || 'coordinator', { chat: chatId, id: m.message_id });
       return ack(m, v);
     }
     if (name === 'sheet') {
@@ -194,6 +198,12 @@ ${AI_NOTICE}` : ''}`);
     return engine.reply(run.id, { volunteerId, text, by, short, src });
   }
 
+  // A question for the lens, with one-tap answers. The answer comes back as a reply to the asking message.
+  async function lensAsk(run, volunteerId, text, by, src) {
+    const answers = ai?.answers ? await ai.answers(text) : suggestAnswers(text);
+    return engine.ask(run.id, { volunteerId, text, by, answers, src });
+  }
+
   // The volunteer opens t.me/<bot>?start=<code>. A bot cannot message anyone first, so this
   // is the moment we learn where to reach them. The code stays valid for the glasses app.
   async function linkVolunteer(m, code) {
@@ -236,10 +246,12 @@ ${AI_NOTICE}` : ''}`);
     if (!ref || !m.text) return;
     const team = engine.teamByChat(m.chat.id);
     const run = team && engine.activeRun(team.id);
-    const volId = run?.msgIndex?.[`${m.chat.id}:${ref.message_id}`];
+    const key = `${m.chat.id}:${ref.message_id}`;
+    const asked = run?.askPrompts?.[key];
+    const volId = asked || run?.msgIndex?.[key];
     if (!volId) return;
     if (!(await isCoord(team, m.from?.id, m.chat.id))) return;
-    await lensReply(run, volId, m.text, m.from.first_name || 'coordinator', { chat: m.chat.id, id: m.message_id });
+    await (asked ? lensAsk : lensReply)(run, volId, m.text, m.from.first_name || 'coordinator', { chat: m.chat.id, id: m.message_id });
     return ack(m, run.volunteers[volId]);
   }
 
@@ -283,6 +295,16 @@ ${AI_NOTICE}` : ''}`);
       if (kind === 'r' && PRESETS[Number(idx)]) {
         engine.reply(run.id, { volunteerId: v.id, text: PRESETS[Number(idx)], by: q.from.first_name || 'coordinator' });
         return telegram.answerCallback(q.id, `Sent to ${v.name}`);
+      }
+      if (kind === 'a') {
+        // Telegram opens a reply box for the person who pressed, and the reply becomes the question.
+        const who = q.from.first_name || 'Coordinator';
+        const prompt = await say(chat, `${who}, reply to this message with your question for ${v.name}'s lens.`, {
+          reply_markup: { force_reply: true, selective: true, input_field_placeholder: 'Your question' },
+          entities: [{ type: 'text_mention', offset: 0, length: who.length, user: { id: q.from.id } }], disable_notification: true,
+        });
+        (run.askPrompts ||= {})[`${chat}:${prompt.message_id}`] = v.id;
+        return telegram.answerCallback(q.id, 'Reply with your question');
       }
       if (kind === 'ok') {
         engine.markOk(run.id, v.id, q.from.first_name || 'coordinator');
