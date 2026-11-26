@@ -52,6 +52,10 @@ export const MENU = [
 // One tap each, no typing. Short so they fit on the lens.
 export const PRESET_CLUES = ['House empty', 'Person inside', 'Road blocked', 'Need boat'];
 
+// Hold to talk. The cap stays well under the server's upload limit.
+export const HOLD_MAX_S = 10;
+export const HOLD_MIN_MS = 500;
+export const holdText = () => ['● Listening', '', 'Let go to send.'].join('\n');
 export const listenText = (secs) => ['● Listening', '', 'Say your clue.', `${secs}s left. Tap when done.`, 'Swipe to cancel.'].join('\n');
 export const thinkText = () => ['Got it.', '', 'Turning it into text...'].join('\n');
 export const confirmText = (text, secs) => ['Your clue:', '', `"${String(text).slice(0, 300)}"`, '', `Sending in ${secs}s.`, 'Tap = send now. Swipe or say "cancel".'].join('\n');

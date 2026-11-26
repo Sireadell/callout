@@ -1,5 +1,5 @@
 import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
-import { glanceText, MENU, PRESET_CLUES, listenText, thinkText, confirmText, isOk, okText, stillText, backupText, replyText } from './view.js';
+import { glanceText, MENU, PRESET_CLUES, HOLD_MAX_S, HOLD_MIN_MS, holdText, listenText, thinkText, confirmText, isOk, okText, stillText, backupText, replyText } from './view.js';
 import { makeStillness } from './motion.js';
 
 const SERVER = import.meta.env?.VITE_SERVER_URL || localStorage.getItem('callout.server') || 'http://localhost:8787';
@@ -42,24 +42,38 @@ const TEXT_PAGE = () => ({
   menuObject: { menuItems: MENU },
 });
 
-// ---- voice clue: tap to talk, up to 4 seconds, server turns it into text ----
-const voice = { frames: [], timer: null, t0: 0 };
+// ---- voice clue: hold to talk (let go to send), or the menu route with a 4 second window ----
+const voice = { frames: [], timer: null, t0: 0, id: 0, hold: false };
 const toBase64 = (bytes) => {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
 };
 
-async function startTalk() {
+async function startTalk(hold = false) {
   if (!state.token) return flash('Pair first');
-  state.mode = 'listen'; voice.frames = []; voice.t0 = Date.now();
-  if (!(await bridge.audioControl(true, AudioInputSource.Glasses))) { state.mode = 'glance'; return flash('▲ Microphone not available'); }
-  setScreen(listenText(4));
+  const id = ++voice.id;
+  const secs = hold ? HOLD_MAX_S : 4;
+  state.mode = 'listen'; voice.hold = hold; voice.frames = []; voice.t0 = Date.now();
   clearInterval(voice.timer);
+  setScreen(hold ? holdText() : listenText(secs));
+  const on = await bridge.audioControl(true, AudioInputSource.Glasses).catch(() => false);
+  if (voice.id !== id || state.mode !== 'listen') {
+    // Let go or cancelled before the microphone had opened: make sure it does not stay open.
+    if (on && state.mode !== 'listen' && state.mode !== 'ok') bridge.audioControl(false).catch(() => {});
+    return;
+  }
+  if (!on) { state.mode = 'glance'; return flash('▲ Microphone not available'); }
   voice.timer = setInterval(() => {
-    const left = 4 - (Date.now() - voice.t0) / 1000;
-    if (left <= 0) stopTalk(); else setScreen(listenText(Math.ceil(left)));
+    const left = secs - (Date.now() - voice.t0) / 1000;
+    if (left <= 0) stopTalk(); else if (!hold) setScreen(listenText(Math.ceil(left)));
   }, 500);
+}
+
+function releaseTalk() {
+  if (state.mode !== 'listen' || !voice.hold) return;
+  if (Date.now() - voice.t0 < HOLD_MIN_MS) return cancelClue('Too short. Hold while you talk');
+  stopTalk();
 }
 
 function joinFrames() {
@@ -83,8 +97,9 @@ async function okWindow(kind = 'checkin') {
       voice.frames = []; setScreen(kind === 'still' ? stillText(round) : okText(round));
       if (!(await bridge.audioControl(true, AudioInputSource.Glasses))) break;
       await sleep(3000);
-      await bridge.audioControl(false);
+      // Skipped or replaced (for example by hold to talk): the microphone now belongs to someone else.
       if (state.mode !== 'ok' || ok.run !== mine) return;
+      await bridge.audioControl(false);
       const { text } = await api('/api/voice', { audio: toBase64(joinFrames()) }).catch(() => ({ text: '' }));
       if (ok.run === mine && isOk(text)) {
         answered = true; state.mode = 'glance';
@@ -112,13 +127,16 @@ async function stopTalk() {
   if (state.mode !== 'listen') return;
   clearInterval(voice.timer);
   state.mode = 'think'; setScreen(thinkText());
+  const id = voice.id;
+  const left = () => voice.id !== id || state.mode !== 'think'; // left through the menu while waiting
   await bridge.audioControl(false);
   try {
     const { text } = await api('/api/voice', { audio: toBase64(joinFrames()) });
+    if (left()) return;
     if (!text) return cancelClue('Heard nothing. Try again');
     if (/^cancel[.!]?$/i.test(text.trim())) return cancelClue('Cancelled');
     showConfirm(text);
-  } catch { cancelClue('▲ Could not hear you. Try again'); }
+  } catch { if (!left()) cancelClue('▲ Could not hear you. Try again'); }
 }
 
 function showConfirm(text) {
@@ -293,7 +311,7 @@ async function onMenu(id) {
   if (state.mode === 'presets') await closePresets();
   else if (state.mode !== 'glance') cancelClue('');
   if (id === 1) checkIn();
-  else if (id === 2) startTalk();
+  else if (id === 2) startTalk(false);
   else if (id === 3) openPresets();
   else if (id === 4) flash(state.lastReply ? `Reply: ${state.lastReply}` : 'No reply yet', 6000);
   else if (id === 5) signOut();
@@ -319,6 +337,8 @@ function onEvent(e) {
   const dbl = t === OsEventTypeList.DOUBLE_CLICK_EVENT;
   const swipe = t === OsEventTypeList.SCROLL_TOP_EVENT || t === OsEventTypeList.SCROLL_BOTTOM_EVENT;
   if (t === OsEventTypeList.FOREGROUND_ENTER_EVENT) { sync(); heartbeat(); return; }
+  if (t === OsEventTypeList.LONG_PRESS_EVENT) return onHold();
+  if (t === OsEventTypeList.LONG_PRESS_RELEASE_EVENT) return releaseTalk();
   if (state.mode === 'listen') { if (click) stopTalk(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
   if (state.mode === 'ok') { if (click) { const still = ok.kind === 'still'; cancelClue(''); if (still) { motion.reset(); state.stillUnanswered = false; flash('● Thanks'); } else checkIn(); } else if (swipe || dbl) cancelClue('Skipped'); return; }
   if (state.mode === 'confirm') { if (click) sendPending(); else if (swipe || dbl) cancelClue('Cancelled'); return; }
@@ -335,6 +355,14 @@ function onEvent(e) {
   if (click && state.pendingReply) confirmReplyNow();      // a tap while a reply shows means got it
   else if (click) checkIn();                              // ring or temple tap
   else if (dbl) bridge.shutDownPageContainer(1);          // store rule: system exit dialog
+}
+
+// Holding works from the main screen, the quick clue list, the "say OK" window and the confirm screen
+// (hold again to say it afresh). It never answers the backup question.
+function onHold() {
+  if (state.mode === 'presets') return closePresets().then(() => startTalk(true));
+  if (state.mode === 'ok' || state.mode === 'confirm') { cancelClue(''); return startTalk(true); }
+  if (state.mode === 'glance') return startTalk(true);
 }
 
 async function start() {
