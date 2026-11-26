@@ -1,4 +1,4 @@
-import { waitForEvenAppBridge, OsEventTypeList, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
+import { waitForEvenAppBridge, OsEventTypeList, EventSourceType, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
 import { view, BOXES, MENU, ANSWER_ITEM, questionText, questionRows, SPEAK, quickClues, HOLD_MAX_S, HOLD_MIN_MS, holdScreen, listenScreen, thinkScreen, confirmScreen, isOk, voiceAction, okScreen, stillScreen, backupScreen } from './view.js';
 import { makeStillness } from './motion.js';
 
@@ -398,6 +398,8 @@ function expireReply() {
   state.reply = null; paint();
 }
 
+const repeatReply = () => showReply({ by: state.lastReplyBy, text: state.lastReply }); // no id: nothing to confirm
+
 async function checkIn() {
   if (!state.token) return flash('Pair first');
   flash('○ Checking in...', 8000);
@@ -521,7 +523,7 @@ async function onMenu(id) {
   if (id === 1) checkIn();
   else if (id === 2) startTalk(false);
   else if (id === 3) openPresets();
-  else if (id === 4) { if (state.lastReply) showReply({ by: state.lastReplyBy, text: state.lastReply }); else flash('No reply yet', 6000); }
+  else if (id === 4) { if (state.lastReply) repeatReply(); else flash('No reply yet', 6000); }
   else if (id === 5) signOut();
   else if (id === 8) askBackup();
   else if (id === 6) addPhoto(true);
@@ -537,6 +539,9 @@ function onEvent(e) {
     if ((state.mode === 'listen' || state.mode === 'ok') && e.audioEvent.speakerRole !== AudioSpeakerRole.Other) voice.frames.push(e.audioEvent.audioPcm);
     return;
   }
+  const left = (e.sysEvent || e.textEvent)?.eventSource === EventSourceType.TOUCH_EVENT_FROM_GLASSES_L;
+  // The left side hint only shows once the host has said which side a touch came from.
+  if ((e.sysEvent || e.textEvent)?.eventSource) state.sides = true;
   if (e.menuItemClickEvent) { if (state.closed) appOpen(); return onMenu(e.menuItemClickEvent.itemID); }
   const ev = e.textEvent || e.sysEvent || e.listEvent;
   if (!ev) return;
@@ -567,7 +572,8 @@ function onEvent(e) {
   if (!state.token && click) return tapUnpaired();
   if (!state.token && swipe) return flash('Tap: join code. Double tap: exit.');
   if (click && state.reply?.tappable) confirmReplyNow();      // a tap while a reply shows means got it
-  else if (click) checkIn();                              // ring or temple tap
+  else if (click && left && state.lastReply) repeatReply(); // left temple reads, ring and right temple check in
+  else if (click) checkIn();
   else if (dbl) bridge.shutDownPageContainer(1);          // store rule: system exit dialog
   else if (swipe) flash(GESTURES);
 }

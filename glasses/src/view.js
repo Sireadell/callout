@@ -108,7 +108,9 @@ export function glanceView(state, now = Date.now()) {
   }
   const first = reply && due >= 0 ? countdown(due) : [teamLine, String(s.runName).slice(0, 18)].filter(Boolean).join(' ━ ');
   const status = [first.slice(0, COLS), warn.join('  ').slice(0, COLS)];
-  const hint = reply?.tappable ? 'Tap: got it.  Hold: talk.' : 'Tap: check in. Hold: talk. Double: exit.';
+  const hint = reply?.tappable ? 'Tap: got it.  Hold: talk.'
+    : state.lastReply && state.sides ? 'Tap: check in. Left: reply. Hold: talk.'
+      : 'Tap: check in. Hold: talk. Double: exit.';
   return screen(main, status, hint);
 }
 
