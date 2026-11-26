@@ -1,5 +1,6 @@
 import { intentOf } from './intent.js';
 import { makeLongPoll } from './longpoll.js';
+import { makeLimiter } from './limit.js';
 
 // One log line that shows whose address the rate limit counts: the caller's, or a proxy in front of the server.
 // Addresses are cut short so no caller can be identified from the log.
@@ -15,10 +16,18 @@ export function describeCaller(req) {
 }
 
 // What the glasses app and the Mini App can ask the server. Kept apart from the web server so it can be tested.
-export function makeRoutes({ engine, stt, miniapp = null, env = process.env }) {
+export function makeRoutes({ engine, stt, joins = null, botName = () => null, miniapp = null, env = process.env }) {
   const sync = makeLongPoll({ engine });
+  const newCodes = makeLimiter({ max: 20, windowMs: 10 * 60_000, now: () => engine.clock.now() });
   return {
     'POST /api/pair': (b) => engine.pair(b.code),
+    // A 4 digit code for the lens. The secret lets only this lens collect the result.
+    'POST /api/join': (b, { caller } = {}) => {
+      if (!joins) throw new Error('not set up');
+      if (!newCodes.allow(caller || 'unknown')) throw Object.assign(new Error('slow down'), { status: 429 });
+      return { ...joins.create(), bot: botName() };
+    },
+    'POST /api/join/status': (b) => { if (!joins) throw new Error('not set up'); return joins.status(String(b.secret || '')); },
     'POST /api/checkin': (b) => engine.checkIn(b.token, { pos: b.pos, at: b.at }),
     'POST /api/heartbeat': (b) => { engine.heartbeat(b.token, b); return { ok: true }; },
     'POST /api/clue': (b) => { const c = engine.clue(b.token, b); return { id: c.id }; },

@@ -3,12 +3,14 @@
 import { PRESETS, boardText } from './router.js';
 import { parseSheetId } from './sheet.js';
 import { trimLine, suggestAnswers } from './ai.js';
+import { makeLimiter } from './limit.js';
 
 const HELP = [
   'Callout team check-in bot.',
   '/team <name>  set up this group as a team (run it in the group)',
   '/run <name>  start a run',
   '/add <name> | <area>  add a volunteer, get a pairing code for the glasses app',
+  '/join <code>  join with the 4 digit code on your glasses (the coordinator picks the area)',
   '/status  show who is due or overdue',
   '/interval <minutes>  set the check-in gap for this run (5 to 60)',
   '/clues a, b, c, d  set the one-tap clues on the lens (/clues default to reset)',
@@ -32,10 +34,10 @@ const RIGHTS = [
 const ADMIN_LINK = (bot) => `https://t.me/${bot}?startgroup=setup&admin=pin_messages+manage_topics`;
 
 export const COMMANDS = {
-  everyone: [{ command: 'start', description: 'How this works' }, { command: 'help', description: 'List the commands' }],
+  everyone: [{ command: 'start', description: 'How this works' }, { command: 'join', description: 'Join with the code on your glasses' }, { command: 'help', description: 'List the commands' }],
   coordinator: [
     { command: 'team', description: 'Make this group a team' }, { command: 'run', description: 'Start a run' },
-    { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' }, { command: 'interval', description: 'Check-in gap in minutes (5 to 60)' }, { command: 'clues', description: 'Set the one-tap clues on the lens' },
+    { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' }, { command: 'join', description: 'Join with the code on your glasses' }, { command: 'interval', description: 'Check-in gap in minutes (5 to 60)' }, { command: 'clues', description: 'Set the one-tap clues on the lens' },
     { command: 'reply', description: 'Send a line to a volunteer' }, { command: 'ask', description: 'Ask a volunteer a question' }, { command: 'app', description: 'Open the team dashboard' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
     { command: 'end', description: 'Finish the run' },
     { command: 'coordinator', description: 'Send private notices to me' }, { command: 'help', description: 'List the commands' },
@@ -45,8 +47,45 @@ export const COMMANDS = {
 // Commands that change a run. Everyone in the group can read the board; only the coordinator or a group admin can do these.
 const COORD_ONLY = new Set(['coordinator', 'ask', 'clues', 'interval', 'run', 'add', 'reply', 'sheet', 'import', 'end']);
 
-export function makeBot({ engine, telegram, router, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null }) {
+export function makeBot({ engine, telegram, router, joins = null, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
+
+  // Wrong join codes are counted, so a code cannot be found by trying numbers.
+  const clockNow = () => engine.clock.now();
+  const wrongByUser = makeLimiter({ max: 5, windowMs: 10 * 60_000, now: clockNow });
+  const wrongByChat = makeLimiter({ max: 15, windowMs: 10 * 60_000, now: clockNow });
+
+  async function onJoin(m, team, run, code) {
+    const chatId = m.chat.id;
+    const quiet = { disable_notification: true };
+    if (!joins) return say(chatId, 'Joining by code is not set up on this server.', quiet);
+    if (!/^\d{4}$/.test(code)) return say(chatId, 'Use: /join with the 4 digit code shown on your glasses.', quiet);
+    const who = m.from?.id;
+    if (wrongByUser.full(who) || wrongByChat.full(chatId)) return say(chatId, 'Too many wrong codes. Try again in 10 minutes.', quiet);
+    const name = (m.from?.first_name || 'Volunteer').slice(0, 40);
+    const claim = joins.claim(code, { runId: run.id, userId: who, name });
+    if (!claim) {
+      wrongByUser.allow(who); wrongByChat.allow(chatId);
+      return say(chatId, 'That code is not waiting. Check the number on the glasses, or get a new one.', quiet);
+    }
+    // People on the list who have not joined, or this same person on a new phone, then the run's areas.
+    const people = Object.values(run.volunteers).filter((v) => v.status === 'waiting' || v.tgChatId === who)
+      .sort((a, b) => (b.name.toLowerCase() === name.toLowerCase()) - (a.name.toLowerCase() === name.toLowerCase())).slice(0, 6);
+    const areas = [...new Set(Object.values(run.volunteers).map((v) => v.area))].slice(0, 6);
+    const rows = [
+      ...people.map((v) => [{ text: `This is ${v.name}, ${v.area}`.slice(0, 60), callback_data: `j|${claim.id}|v|${v.id}` }]),
+      ...areas.map((a, i) => [{ text: `New: ${name} in ${a}`.slice(0, 60), callback_data: `j|${claim.id}|a|${i}` }]),
+    ];
+    const prompt = await say(chatId, `${name} wants to join with their glasses. Coordinator: choose below, or reply to this message with an area name.`, rows.length ? { reply_markup: { inline_keyboard: rows } } : undefined);
+    (run.joinPrompts ||= {})[`${chatId}:${prompt.message_id}`] = claim.id;
+    (run.joinAreas ||= {})[claim.id] = areas;
+  }
+
+  async function admit(chatId, claimId, choice) {
+    let joined;
+    try { joined = joins.admit(claimId, choice); } catch { return say(chatId, 'That code has expired. Get a new one on the glasses.'); }
+    return say(chatId, `${joined.name} is in (${joined.area}). For private check-in reminders, press Start in a private chat with me: https://t.me/${botUsername}`, { disable_notification: true });
+  }
 
   // The person who set up the team, or a group admin.
   async function isCoord(team, userId, chatId) {
@@ -160,6 +199,10 @@ ${AI_NOTICE}` : ''}`);
       }
     }
     if (!run) return say(chatId, 'No active run. Start one with /run <name>.');
+    if (name === 'join') {
+      if (!isGroup) return say(chatId, 'Send /join with your code in your team group.');
+      return onJoin(m, team, run, arg.trim());
+    }
 
     if (name === 'add') {
       const [vn, area] = arg.split('|').map((s) => s.trim());
@@ -278,6 +321,11 @@ ${AI_NOTICE}` : ''}`);
   async function replyToClue(m) {
     const ref = m.reply_to_message;
     if (!ref || !m.text) return;
+    const joining = engine.findMessage(m.chat.id, ref.message_id, 'joinPrompts');
+    if (joining) {
+      if (!(await isCoord(joining.team, m.from?.id, m.chat.id))) return;
+      return admit(m.chat.id, joining.volunteerId, { area: m.text.trim().slice(0, 60) });
+    }
     const asked = engine.findMessage(m.chat.id, ref.message_id, 'askPrompts');
     const found = asked || engine.findMessage(m.chat.id, ref.message_id);
     if (!found) return;
@@ -311,8 +359,20 @@ ${AI_NOTICE}` : ''}`);
   }
 
   async function onCallback(q) {
-    const [kind, volId, idx] = String(q.data || '').split('|');
+    const [kind, volId, idx, extra] = String(q.data || '').split('|');
     try {
+      if (kind === 'j') {
+        const claim = joins?.pending(volId);
+        const run = claim && engine.runs[claim.runId];
+        const team = run && engine.teams[run.teamId];
+        const chat = q.message?.chat?.id;
+        if (!team || chat !== team.telegram?.chatId) return telegram.answerCallback(q.id, 'Not available');
+        if (!(await isCoord(team, q.from?.id, chat))) return telegram.answerCallback(q.id, 'Only the coordinator can do that');
+        const choice = idx === 'v' ? { volunteerId: extra } : { area: run.joinAreas?.[volId]?.[Number(extra)] };
+        if (!choice.volunteerId && !choice.area) return telegram.answerCallback(q.id, 'Not available');
+        await telegram.answerCallback(q.id, 'Adding them');
+        return admit(chat, volId, choice);
+      }
       const { run, v } = engine.findVolunteer(volId);
       const team = engine.teams[run.teamId];
       const chat = q.message?.chat?.id;

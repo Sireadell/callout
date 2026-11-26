@@ -118,11 +118,29 @@ export class Engine {
     if (this.clock.now() > p.expiresAt) throw new Error('code expired');
     p.used = true;
     const run = this._run(p.runId);
-    const v = run.volunteers[p.volunteerId];
+    return this._admit(run, run.volunteers[p.volunteerId]);
+  }
+
+  // Joining with the short lens code, approved by the coordinator. The Telegram person who sent the code
+  // becomes this volunteer's private chat.
+  join(runId, { volunteerId, name, area, chatId }) {
+    const run = this._run(runId);
+    if (run.status !== 'active') throw new Error('run ended');
+    let v = volunteerId ? run.volunteers[volunteerId] : null;
+    if (volunteerId && !v) throw new Error('unknown volunteer');
+    v ||= this.addVolunteer(runId, { name, area }).volunteer;
+    // One lens per volunteer: earlier sign-in keys and unused codes stop working.
+    for (const keys of [this.tokens, this.pairings]) for (const [k, ref] of Object.entries(keys)) if (ref.volunteerId === v.id) delete keys[k];
+    v.tgChatId = chatId;
+    return this._admit(run, v);
+  }
+
+  _admit(run, v) {
     const now = this.clock.now();
     v.status = 'active';
     v.lastCheckin = now;
     v.lastSeen = now;
+    v.step = 0; v.nudge = 0;
     const token = randomBytes(24).toString('hex');
     this.tokens[hashKey(token)] = { runId: run.id, volunteerId: v.id };
     this._emit(run, 'team', 'joined', `${v.name} joined (${v.area}).`);

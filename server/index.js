@@ -13,6 +13,7 @@ import { makeMiniApp } from './miniapp.js';
 import { makeSheet } from './sheet.js';
 import { makeRoutes, describeCaller } from './api.js';
 import { makeSaver } from './saver.js';
+import { makeJoins } from './join.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const PORT = Number(process.env.PORT || 8787);
@@ -63,7 +64,9 @@ function rawBody(req, cap = 64 * 1024) {
 }
 const miniapp = process.env.TELEGRAM_BOT_TOKEN ? makeMiniApp({ engine, botToken: process.env.TELEGRAM_BOT_TOKEN, presets: PRESETS }) : null;
 const stt = makeStt({ apiKey: process.env.ASSEMBLYAI_API_KEY });
-const routes = makeRoutes({ engine, stt, miniapp });
+const joins = makeJoins({ engine });
+let botName = null;
+const routes = makeRoutes({ engine, stt, joins, botName: () => botName, miniapp });
 // Local testing only: makes a team, a run and one volunteer and returns the pairing code.
 if (process.env.CALLOUT_DEV === '1') {
   routes['POST /dev/seed'] = (b) => {
@@ -103,10 +106,10 @@ const server = http.createServer(async (req, res) => {
     // A held request stops waiting if the caller hangs up.
     const gone = new AbortController();
     res.on('close', () => { if (!res.writableEnded) gone.abort(); });
-    const out = await fn(input, { signal: gone.signal });
+    const out = await fn(input, { signal: gone.signal, caller: req.socket.remoteAddress });
     if (!gone.signal.aborted) send(res, 200, out);
   } catch (e) {
-    send(res, 400, { error: e.message });
+    send(res, e.status || 400, { error: e.message });
   }
 });
 
@@ -122,7 +125,8 @@ async function poll() {
 
 async function startTelegram() {
   const me = await telegram.getMe();
-  bot = makeBot({ engine, telegram, router, botUsername: me.username, ai, sheet, appUrl: process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL}/app` : null, discordDefault: process.env.DISCORD_WEBHOOK_URL ? { webhookUrl: process.env.DISCORD_WEBHOOK_URL, channelId: process.env.DISCORD_CHANNEL_ID || null } : null });
+  botName = me.username;
+  bot = makeBot({ engine, telegram, router, joins, botUsername: me.username, ai, sheet, appUrl: process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL}/app` : null, discordDefault: process.env.DISCORD_WEBHOOK_URL ? { webhookUrl: process.env.DISCORD_WEBHOOK_URL, channelId: process.env.DISCORD_CHANNEL_ID || null } : null });
   await bot.register().catch((e) => console.error('commands:', e.message));
   if (process.env.TELEGRAM_WEBHOOK_SECRET && process.env.PUBLIC_URL) {
     await telegram.setWebhook(`${process.env.PUBLIC_URL}/telegram/webhook`, process.env.TELEGRAM_WEBHOOK_SECRET);
