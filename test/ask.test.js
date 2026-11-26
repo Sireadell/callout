@@ -79,3 +79,26 @@ test('AI answers are cut, guarded and replaced when unusable', async () => {
   assert.deepEqual(await reply('help is coming').answers('Which door?'), ['Not sure', 'Give me 5 min', 'Call me']);
   assert.deepEqual(await makeAi({}).answers('Can you hear me?'), ['Yes', 'No', 'Not sure']);
 });
+
+test('one coordinator with two teams can answer both from the private chat', async () => {
+  const { bot, engine, tg } = setup();
+  const ana = await start({ bot, engine, tg }, { chat: -500, team: 'Wardens', name: 'Ana' });
+  await bot.handle(msg('/coordinator', { chat: { id: -500, type: 'supergroup' } }));
+  const ben = await start({ bot, engine, tg }, { chat: -600, team: 'Drivers', name: 'Ben' });
+  await bot.handle(msg('/coordinator', { chat: { id: -600, type: 'supergroup' } }));
+  const priv = { id: 7, type: 'private' };
+  for (const v of [ana, ben]) engine.needBackup(v.token);
+  engine.reply(ana.run.id, { volunteerId: ana.id, text: 'x' }); engine.sync(ana.token);
+  engine.sync(ben.token);
+  // A notice for the second team that goes to the coordinator's private chat.
+  engine.announce(ben.run.id, 'coordinator', 'went_silent', 'Ben quiet', { volunteerId: ben.id });
+  await settle();
+  const notice = tg.out.find((m) => m.chat === 7 && m.text === 'Ben quiet');
+  await bot.handle(msg('Come back', { chat: priv, reply_to_message: { message_id: notice.message_id } }));
+  assert.equal(engine.sync(ben.token).replies[0].text, 'Come back');
+  await bot.handle({ message_reaction: { chat: priv, message_id: notice.message_id, user: { id: 7, first_name: 'Sam' }, old_reaction: [], new_reaction: [{ type: 'emoji', emoji: '👍' }] } });
+  assert.equal(engine.sync(ben.token).replies[0].text, 'Seen');
+  await bot.handle(msg('/ask Ben are you there?', { chat: priv }));
+  assert.equal(engine.sync(ben.token).question.text, 'are you there?');
+  assert.equal(engine.sync(ana.token).question, null);
+});

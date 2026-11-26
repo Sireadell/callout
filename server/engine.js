@@ -390,8 +390,23 @@ export class Engine {
     for (const run of Object.values(this.runs)) if (run.volunteers[volId]) return { run, v: run.volunteers[volId] };
     throw new Error('unknown volunteer');
   }
+  // A group's own team comes before a team that only uses the chat for private notices.
   teamByChat(chatId) {
-    return Object.values(this.teams).find((t) => t.telegram && (t.telegram.chatId === chatId || t.telegram.coordinatorChatId === chatId));
+    const teams = this.teamsByChat(chatId);
+    return teams.find((t) => t.telegram.chatId === chatId) || teams[0];
+  }
+  // One coordinator can run several teams from one private chat, so a chat can lead to more than one team.
+  teamsByChat(chatId) {
+    return Object.values(this.teams).filter((t) => t.telegram && (t.telegram.chatId === chatId || t.telegram.coordinatorChatId === chatId));
+  }
+  // Which active run, and which map in it, knows this bot message.
+  findMessage(chatId, messageId, map = 'msgIndex') {
+    for (const team of this.teamsByChat(chatId)) {
+      const run = this.activeRun(team.id);
+      const volunteerId = run?.[map]?.[`${chatId}:${messageId}`];
+      if (volunteerId) return { team, run, volunteerId };
+    }
+    return null;
   }
   activeRun(teamId) {
     return Object.values(this.runs).filter((r) => r.teamId === teamId && r.status === 'active').at(-1);

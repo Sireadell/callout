@@ -126,7 +126,17 @@ Everyone who joins agrees to share their position with this group while the run 
 
 ${AI_NOTICE}` : ''}`);
     }
-    const run = engine.activeRun(team.id);
+    let run = engine.activeRun(team.id);
+    // /reply and /ask from a private chat can mean a volunteer in any of the teams that use this chat.
+    if (!isGroup && (name === 'reply' || name === 'ask')) {
+      const named = engine.teamsByChat(chatId).map((t) => engine.activeRun(t.id))
+        .filter((r) => r && Object.values(r.volunteers).some((x) => arg.toLowerCase().startsWith(x.name.toLowerCase() + ' ')));
+      if (named.length > 1) return say(chatId, 'That name is in more than one of your teams. Send it in that team group, or reply to their message.');
+      if (named.length) {
+        if (!(await isCoord(engine.teams[named[0].teamId], m.from?.id, chatId))) return say(chatId, 'Only the coordinator can do that.', { disable_notification: true });
+        run = named[0];
+      }
+    }
     if (!run) return say(chatId, 'No active run. Start one with /run <name>.');
 
     if (name === 'add') {
@@ -244,12 +254,10 @@ ${AI_NOTICE}` : ''}`);
   async function replyToClue(m) {
     const ref = m.reply_to_message;
     if (!ref || !m.text) return;
-    const team = engine.teamByChat(m.chat.id);
-    const run = team && engine.activeRun(team.id);
-    const key = `${m.chat.id}:${ref.message_id}`;
-    const asked = run?.askPrompts?.[key];
-    const volId = asked || run?.msgIndex?.[key];
-    if (!volId) return;
+    const asked = engine.findMessage(m.chat.id, ref.message_id, 'askPrompts');
+    const found = asked || engine.findMessage(m.chat.id, ref.message_id);
+    if (!found) return;
+    const { team, run, volunteerId: volId } = found;
     if (!(await isCoord(team, m.from?.id, m.chat.id))) return;
     await (asked ? lensAsk : lensReply)(run, volId, m.text, m.from.first_name || 'coordinator', { chat: m.chat.id, id: m.message_id });
     return ack(m, run.volunteers[volId]);
@@ -265,10 +273,9 @@ ${AI_NOTICE}` : ''}`);
   // A coordinator reacts to a clue or notice: thumbs up reads "Seen" on the lens, OK hand reads "OK", heart "Thanks".
   const REACTIONS = { '👍': 'Seen', '👌': 'OK', '❤': 'Thanks', '❤️': 'Thanks' };
   async function onReaction(u) {
-    const team = engine.teamByChat(u.chat.id);
-    const run = team && engine.activeRun(team.id);
-    const volId = run?.msgIndex?.[`${u.chat.id}:${u.message_id}`];
-    if (!volId) return;
+    const found = engine.findMessage(u.chat.id, u.message_id);
+    if (!found) return;
+    const { team, run, volunteerId: volId } = found;
     if (!(await isCoord(team, u.user?.id, u.chat.id))) return;
     const added = (u.new_reaction || []).filter((x) => x.type === 'emoji' && REACTIONS[x.emoji]);
     const before = new Set((u.old_reaction || []).map((x) => x.emoji));
