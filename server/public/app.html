@@ -5,35 +5,81 @@
 <style>
 body{font:15px system-ui;margin:0;padding:12px;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#111)}
 h1{font-size:17px;margin:0 0 8px}.card{border:1px solid #8884;border-radius:8px;padding:10px;margin:8px 0}
-.row{display:flex;justify-content:space-between;gap:8px}.st{font-weight:600}.overdue{color:#b00020}.silent{color:#8a5a00}
-button{font:inherit;padding:8px 10px;margin:4px 4px 0 0;border-radius:6px;border:1px solid #8886;background:var(--tg-theme-button-color,#2a7);color:var(--tg-theme-button-text-color,#fff)}
-small{opacity:.7}a{color:inherit}
+.row{display:flex;justify-content:space-between;gap:8px}.st{font-weight:600}.overdue{color:#d32f2f}.silent{color:#a86a00}
+button{font:inherit;padding:8px 10px;margin:4px 4px 0 0;border-radius:6px;border:1px solid #8886;background:var(--tg-theme-button-color,#1c6b4a);color:var(--tg-theme-button-text-color,#fff)}
+small{opacity:.7}
+svg{display:block;width:100%;max-width:420px;height:auto;border:1px solid #8884;border-radius:8px;fill:currentColor;font:12px system-ui}
+svg .overdue{fill:#d32f2f}svg .silent{fill:#a86a00}
+#note{color:#a86a00}
 </style></head><body>
-<h1 id="title">Callout</h1><div id="list">Loading...</div><h1>Latest clues</h1><div id="clues"></div>
+<h1 id="title">Callout</h1><small id="note"></small><div id="map"></div><div id="list">Loading...</div><h1>Latest clues</h1><div id="clues"></div>
 <p><small>Team notices only. Not an emergency service.</small></p>
 <script>
 const tg = window.Telegram?.WebApp; tg?.ready(); tg?.expand();
 const init = tg?.initData || '';
-const mark = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '○' };
+const mark = { ok: '●', due: '◐', overdue: '▲', silent: '○', waiting: '○', out: '○' };
+const word = { ok: 'ok', due: 'check-in due', overdue: 'overdue', silent: 'gone quiet', waiting: 'not joined yet', out: 'signed out' };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+/* map:start */
+// A plain picture of where people are compared with each other, north at the top. No map service is
+// called, so no position leaves the Callout server and Telegram.
+function dotMap(volunteers, esc) {
+  const here = volunteers.filter((v) => v.pos && Number.isFinite(v.pos.lat) && Number.isFinite(v.pos.lng));
+  if (!here.length) return '';
+  const W = 320, H = 200, PAD = 22;
+  const mid = (k) => (Math.min(...here.map((v) => v.pos[k])) + Math.max(...here.map((v) => v.pos[k]))) / 2;
+  const lat0 = mid('lat'), lng0 = mid('lng');
+  // Metres east and north of the middle.
+  const pts = here.map((v) => ({ v, x: (v.pos.lng - lng0) * 111320 * Math.cos((lat0 * Math.PI) / 180), y: (v.pos.lat - lat0) * 110540 }));
+  // Metres per drawing unit. Never closer than 100 m across, so a few metres of drift do not look like distance.
+  const per = Math.max(100 / (W - 2 * PAD), ...pts.map((p) => Math.abs(p.x) / (W / 2 - PAD)), ...pts.map((p) => Math.abs(p.y) / (H / 2 - PAD)));
+  const nice = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000].filter((m) => m / per <= 110).at(-1) || 100000;
+  const used = [];
+  const dots = pts.map((p) => {
+    const x = Math.round(W / 2 + p.x / per), y = Math.round(H / 2 - p.y / per);
+    let ly = y + 4; // names that would sit on top of each other move down a line
+    while (used.some((u) => Math.abs(u.x - x) < 70 && Math.abs(u.y - ly) < 13)) ly += 13;
+    used.push({ x, y: ly });
+    const left = x > W - 90;
+    return `<circle class="${esc(p.v.state)}" cx="${x}" cy="${y}" r="5"/><text class="${esc(p.v.state)}" x="${left ? x - 9 : x + 9}" y="${ly}" text-anchor="${left ? 'end' : 'start'}">${esc(p.v.name)}</text>`;
+  }).join('');
+  const label = nice >= 1000 ? `${nice / 1000} km` : `${nice} m`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Where people are compared with each other">${dots}<path d="M10 ${H - 10}h${Math.round(nice / per)}" stroke="currentColor" stroke-width="2"/><text x="10" y="${H - 16}">${label}</text><text x="${W - 10}" y="16" text-anchor="end">N ↑</text></svg><small>Not a map. Last known positions, north at the top.</small>`;
+}
+/* map:end */
+const ago = (at) => { const m = Math.floor((Date.now() - at) / 60000); return m < 1 ? 'just now' : `${m} min ago`; };
 async function call(path, body) {
   const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ initData: init, ...body }) });
   const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j;
 }
-let presets = [];
+const el = (id) => document.getElementById(id);
+const sent = new Map(); // button -> what to show on it for a few seconds, kept across redraws
+let loaded = false;
 async function load() {
   try {
-    const s = await call('/app/api/state', {}); presets = s.presets;
-    document.getElementById('title').textContent = s.run ? `${s.team}: ${s.run}${s.status === 'ended' ? ' (finished)' : ''}` : s.team;
-    document.getElementById('list').innerHTML = s.volunteers.map((v) => `<div class="card"><div class="row"><span class="st ${v.state}">${mark[v.state]} ${esc(v.name)}</span><span>${esc(v.area)}</span></div>
-      <small>${v.state}${v.battery != null ? `, glasses ${v.battery}%` : ''}, ${v.checkins} check-ins${v.pos ? ` · <a href="https://www.openstreetmap.org/?mlat=${v.pos.lat}&mlon=${v.pos.lng}#map=17/${v.pos.lat}/${v.pos.lng}" target="_blank">last position</a>` : ''}</small><br>
-      ${s.status === 'active' ? presets.map((p, i) => `<button data-v="${esc(v.id)}" data-p="${i}">${esc(p)}</button>`).join('') : ''}</div>`).join('') || '<small>No volunteers yet.</small>';
-    document.getElementById('clues').innerHTML = s.clues.map((c) => `<div class="card"><b>${esc(c.by)}</b>: ${esc(c.text)}<br><small>${new Date(c.at).toLocaleTimeString()}</small></div>`).join('') || '<small>No clues yet.</small>';
-  } catch (e) { document.getElementById('list').textContent = e.message === 'not a coordinator' ? 'Only the person who set up the team can open this.' : 'Open this from the bot in Telegram.'; }
+    const s = await call('/app/api/state', {});
+    loaded = true; el('note').textContent = '';
+    el('title').textContent = s.run ? `${s.team}: ${s.run}${s.status === 'ended' ? ' (finished)' : ''}` : s.team;
+    el('map').innerHTML = s.status === 'active' ? dotMap(s.volunteers, esc) : '';
+    el('list').innerHTML = s.volunteers.map((v) => `<div class="card"><div class="row"><span class="st ${esc(v.state)}">${mark[v.state] || '○'} ${esc(v.name)}</span><span>${esc(v.area)}</span></div>
+      <small>${word[v.state] || esc(v.state)}${v.battery != null ? `, glasses ${v.battery}%` : ''}, ${v.checkins} check-ins${v.pos?.at ? `, position seen ${ago(v.pos.at)}` : ''}</small><br>
+      ${s.status === 'active' && v.state !== 'waiting' && v.state !== 'out' ? s.presets.map((p, i) => `<button data-v="${esc(v.id)}" data-p="${i}">${esc(sent.get(`${v.id}|${i}`) || p)}</button>`).join('') : ''}</div>`).join('') || '<small>No volunteers yet.</small>';
+    el('clues').innerHTML = s.clues.map((c) => `<div class="card"><b>${esc(c.by)}</b>: ${esc(c.text)}<br><small>${new Date(c.at).toLocaleTimeString()}</small></div>`).join('') || '<small>No clues yet.</small>';
+  } catch (e) {
+    const why = e.message === 'not a coordinator' ? 'Only the person who set up the team can open this.'
+      : e.message === 'not signed in' ? (loaded ? 'This page has been open too long. Close it and open it again from the bot.' : 'Open this from the bot in Telegram.')
+      : 'No connection to the server. Trying again.';
+    // Keep what is already on screen. An old picture with a warning beats an empty page.
+    if (loaded) el('note').textContent = `${why} Showing the last update.`; else el('list').textContent = why;
+  }
 }
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('button[data-v]'); if (!b) return;
-  try { await call('/app/api/reply', { volunteerId: b.dataset.v, preset: Number(b.dataset.p) }); tg?.HapticFeedback?.notificationOccurred('success'); b.textContent = 'Sent'; } catch (err) { b.textContent = 'Failed'; }
+  const key = `${b.dataset.v}|${b.dataset.p}`;
+  let result = 'Sent';
+  try { await call('/app/api/reply', { volunteerId: b.dataset.v, preset: Number(b.dataset.p) }); tg?.HapticFeedback?.notificationOccurred('success'); } catch { result = 'Not sent'; }
+  sent.set(key, result); b.textContent = result;
+  setTimeout(() => { sent.delete(key); load(); }, 4000);
 });
 load(); setInterval(load, 5000);
 </script></body></html>

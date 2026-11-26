@@ -24,9 +24,12 @@ export function makeMiniApp({ engine, botToken, presets, now = () => Date.now() 
   function who(initData) {
     const user = validateInitData(initData, botToken, { now });
     if (!user?.id) throw new Error('not signed in');
-    const team = Object.values(engine.teams).find((t) => t.telegram?.coordinatorUserId === user.id);
-    if (!team) throw new Error('not a coordinator');
-    return { user, team, run: engine.activeRun(team.id) || Object.values(engine.runs).filter((r) => r.teamId === team.id).at(-1) };
+    const mine = Object.values(engine.teams).filter((t) => t.telegram?.coordinatorUserId === user.id);
+    if (!mine.length) throw new Error('not a coordinator');
+    // Someone who set up more than one team sees the one with the newest run still going, else the newest run.
+    const runs = Object.values(engine.runs).filter((r) => mine.some((t) => t.id === r.teamId));
+    const run = runs.filter((r) => r.status === 'active').sort((a, b) => a.startedAt - b.startedAt).at(-1) || runs.sort((a, b) => a.startedAt - b.startedAt).at(-1);
+    return { user, team: run ? engine.teams[run.teamId] : mine.at(-1), run };
   }
   return {
     state(initData) {
@@ -35,7 +38,7 @@ export function makeMiniApp({ engine, botToken, presets, now = () => Date.now() 
       const status = engine.teamStatus(run.id);
       return {
         team: team.name, run: run.name, status: run.status, presets,
-        volunteers: status.map((s) => { const v = run.volunteers[s.id]; return { ...s, pos: v.pos ? { lat: v.pos.lat, lng: v.pos.lng } : null, checkins: v.checkins }; }),
+        volunteers: status.map((s) => { const v = run.volunteers[s.id]; return { ...s, pos: v.pos ? { lat: v.pos.lat, lng: v.pos.lng, at: v.pos.at } : null, checkins: v.checkins }; }),
         clues: run.clues.slice(-20).reverse().map((c) => ({ id: c.id, by: run.volunteers[c.volunteerId]?.name, text: c.text, at: c.at, pos: c.pos })),
       };
     },

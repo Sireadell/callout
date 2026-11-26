@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import fs from 'node:fs';
 import { Engine } from '../server/engine.js';
 import { PRESETS } from '../server/router.js';
 import { makeMiniApp, validateInitData } from '../server/miniapp.js';
@@ -67,4 +68,47 @@ test('/app in private chat gives a web app button; in a group it points to the p
   const none = makeBot({ engine: new Engine(), telegram: tg, router: {} });
   await none.handle({ message: { chat: { id: 7, type: 'private' }, from: { id: 7 }, text: '/app' } });
   assert.match(out.at(-1).t, /public address/);
+});
+
+test('someone with two teams sees the one with a run going', () => {
+  let t = NOW;
+  const engine = new Engine({ clock: { now: () => t } });
+  const a = engine.addTeam({ name: 'First', telegram: { chatId: -1, coordinatorUserId: 7 } });
+  const b = engine.addTeam({ name: 'Second', telegram: { chatId: -2, coordinatorUserId: 7 } });
+  const old = engine.startRun({ teamId: a.id, name: 'Old' });
+  engine.endRun(old.id); t += 1000;
+  engine.startRun({ teamId: b.id, name: 'Now' });
+  const s = makeMiniApp({ engine, botToken: TOKEN, presets: PRESETS, now: () => NOW }).state(initFor({ id: 7, first_name: 'Sam' }));
+  assert.equal(s.team, 'Second'); assert.equal(s.run, 'Now');
+});
+
+// The drawing code lives inside the page, between two markers.
+const page = fs.readFileSync(new URL('../server/public/app.html', import.meta.url), 'utf8');
+const dotMap = new Function(`${page.split('/* map:start */')[1].split('/* map:end */')[0]}; return dotMap;`)();
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const person = (name, lat, lng) => ({ name, state: 'ok', pos: lat === null ? null : { lat, lng } });
+const dots = (svg) => [...svg.matchAll(/<circle [^>]*cx="(-?\d+)" cy="(-?\d+)"/g)].map((m) => [Number(m[1]), Number(m[2])]);
+
+test('the dashboard asks no map service: the only outside address in the page is Telegram', () => {
+  const hosts = [...page.matchAll(/https?:\/\/([^/"'\s`)]+)/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(hosts)], ['telegram.org']);
+  assert.doesNotMatch(page, /openstreetmap|<a /i);
+});
+
+test('dots keep north up and east right, inside the picture, with no coordinates in it', () => {
+  const svg = dotMap([person('South west', 51.5, -0.13), person('North east', 51.51, -0.12), person('No position', null)], esc);
+  const [sw, ne] = dots(svg);
+  assert.equal(dots(svg).length, 2);
+  assert.ok(ne[0] > sw[0] && ne[1] < sw[1]);
+  for (const [x, y] of dots(svg)) assert.ok(x >= 0 && x <= 320 && y >= 0 && y <= 200);
+  assert.doesNotMatch(svg, /51\.5|-0\.1/);
+  assert.match(svg, />(200|500) m</);
+});
+
+test('one person sits in the middle, close people do not look far apart, names are escaped', () => {
+  assert.deepEqual(dots(dotMap([person('Ana', 51.5, -0.12)], esc)), [[160, 100]]);
+  const [a, b] = dots(dotMap([person('A', 51.5, -0.12), person('B', 51.50002, -0.12)], esc));
+  assert.ok(Math.abs(a[1] - b[1]) < 20);
+  assert.match(dotMap([person('<img src=x>', 51.5, -0.12)], esc), /&lt;img src=x&gt;/);
+  assert.equal(dotMap([person('Ana', null)], esc), '');
 });
