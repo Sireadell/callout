@@ -14,7 +14,8 @@ export function trimLine(text, max = 60) {
 
 // What the AI is allowed to see about a run: counts and clue words. No names, no positions.
 export function debriefFacts(d) {
-  const mins = Math.max(0, Math.round((d.endedAt - d.startedAt) / 60000));
+  // Whole minutes, counted the same way as the debrief message, so the two never disagree.
+  const mins = Math.max(0, Math.floor((d.endedAt - d.startedAt) / 60000));
   const lines = [`Run length: ${mins} minutes.`, `Volunteers: ${d.volunteers.length}.`];
   const checkins = d.volunteers.reduce((n, v) => n + v.checkins, 0);
   const missed = d.volunteers.reduce((n, v) => n + v.missedNotices, 0);
