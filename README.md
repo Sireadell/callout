@@ -58,7 +58,7 @@ npm test
 | Command | What it shows | Result today |
 |---|---|---|
 | `npm run proof` | A full run on a fake Telegram chat: pairing, clue pin, reply, notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, clean-up | 23 of 23 checks pass, 36 messages sent |
-| `npm test` | Server tests, with a fake clock so timers run in milliseconds | 187 of 187 pass |
+| `npm test` | Server tests, with a fake clock so timers run in milliseconds | 188 of 188 pass |
 | `cd glasses; npm install; npm test` | The lens app against fake glasses and a fake server | 66 of 66 pass |
 | `npm ci --prefix glasses; npm run panel:proof` | The real lens app against a local server, with fake glasses input and a fake Telegram | All checks pass |
 
@@ -72,7 +72,7 @@ The server uses one outside package, an MP3 encoder for voice notes. Everything 
 |---|---|
 | "Usefulness on G2 · 30%. Solves a real everyday moment, works at a glance and hands-free." | The check-in on a field shift. At a glance: countdown, area, team count. Hands-free: hold to talk, and a due check-in listens for "OK" |
 | "Read and write · 25%. Acting is fast: a short phrase, one tap or the ring, with smart defaults or AI drafts instead of long dictation." | Judged first. Read: the reply as one line, a photo from the coordinator, and questions with up to 3 one-tap answers. Write: one tap checks in, picks a quick clue or says "got it". Or hold, speak, let go, and the team can hear the clue as a voice note if the coordinator turned them on. The coordinator answers with 4 buttons, up to 2 AI suggestions, a reaction, a line, a photo or a voice message, to one person or to everyone |
-| "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram, and a page a judge can try with no glasses. 187 server tests, 66 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
+| "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram, and a page a judge can try with no glasses. 188 server tests, 66 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
 | "UX for display and voice · 15%. Clear on a 576 × 288 monochrome display, natural by voice." | A bright main line, a dim status line and a dim hint, each with a line limit. Plain glyphs (● ○ ▲), since the lens drops emoji. Every gesture gets an answer on screen |
 | "Business potential and safety · 10%. Real users and demand, careful with data and money." | Team notices only, not an emergency service. "I'm not OK" never checks in. Only the coordinator can act. No position kept after a run, keys only as hashes, the run notice says what goes to the AI. No real users yet, buyers are a guess |
 
@@ -140,7 +140,7 @@ What goes to the AI service, only if a key is set (Claude or OpenRouter): clue w
 | "I'm not OK", "no" and "help" never check in; backup never sent by voice alone | [voice.test.js](glasses/test/voice.test.js), [intent.test.js](test/intent.test.js) | Tested. Live by voice for "I am not OK" only (see below) |
 | Hold to talk, three-box lens, quick clues per run, one-tap answers, 4 digit join | [glasses/test](glasses/test), [ask.test.js](test/ask.test.js), [join.test.js](test/join.test.js) | Tested. Live: `/ask` to Ben, "No" tapped on his lens, the answer under the question in about 2 seconds |
 | Replies pushed by a held request, `/status` timings | [longpoll.test.js](test/longpoll.test.js) | Tested. Live: a button press, a typed reply and a photo each reached the lens in about 2 seconds |
-| `/reply all`, `/ask all` with a count on the board, voice message replies | [everyone.test.js](test/everyone.test.js), [stt.test.js](test/stt.test.js) | Tested. Live: `/reply all` reached both lenses, and after `/ask all Are you OK?` the board read "Yes 1, No 1". Then 20 typed replies in a row all reached their lens. Voice message replies: fakes only so far |
+| `/reply all`, `/ask all` with a count on the board, voice message replies | [everyone.test.js](test/everyone.test.js), [stt.test.js](test/stt.test.js) | Tested. Live: `/reply all` reached both lenses, and after `/ask all Are you OK?` the board read "Yes 1, No 1". Then 20 typed replies in a row all reached their lens. A 3 second voice reply to Ana's clue showed on her lens as "Check the blue door first.", and the bot told the group what it heard |
 | One-person messages, AI suggestions, button colours, table debrief, two teams, app-closed notice | [private.test.js](test/private.test.js), [drafts.test.js](test/drafts.test.js), [debrief.test.js](test/debrief.test.js), [closed.test.js](test/closed.test.js) | Tested. Seen live: a code shown "Only visible to you" and AI buttons appearing (never pressed). The rest fake Telegram only |
 | Offline queue keeps its own time (30 minute cap, never the future) | [review.test.js](test/review.test.js), [offline.test.js](glasses/test/offline.test.js) | Tested: with the signal cut, two check-ins wait, the lens shows "2 waiting to send", and both go out once, oldest first. No real signal loss yet |
 | `/end clear` | [review.test.js](test/review.test.js) | Fake Telegram only |
@@ -168,7 +168,7 @@ All seven are fixed and tested: the board posted three times when notices came t
 | Part | Where it stands |
 |---|---|
 | Voice | 26 November, live server, simulator, PC microphone, phrases played by the computer's voice (not a person, not real glasses), hold to talk: "The bridge on Mill Lane is flooded" came back word for word and posted with reply and AI buttons. "I am OK" checked in and "I am not OK" didn't. "House empty" was first heard as "Margin. Only house empty." and posted as a free clue, then matched on the second try. A second live run played 5 recorded phrases: all came back right in 3 to 4 seconds, "I don't need backup" stayed a clue, and a spoken "I'm okay" cleared a due check-in. Not tried: a human voice, the glasses mic |
-| New in this version | Voice message replies: fakes only so far. `/reply all` and `/ask all` ran once live, with two simulated lenses |
+| New in this version | `/reply all`, `/ask all` and a voice reply each ran once live, with two simulated lenses |
 | App closed | The simulator only sends an exit right after a menu pick, which Callout ignores. Fake glasses only. Unknown whether the notice leaves a real phone |
 | Discord | A webhook notice reached a real channel in 1 second. Reply buttons with fakes only |
 | AI | Ran for real through OpenRouter (Claude Haiku): one line in 2.1 s, a summary in 2.6 s, AI buttons seen appearing under a live clue, never pressed. Answer choices not yet |

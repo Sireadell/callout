@@ -333,7 +333,7 @@ ${AI_NOTICE}` : ''}`);
     if (!words) return say(chatId, 'I could not hear any words in that. Send it again or type it.', quiet);
     if (!v) await toEveryone({ ...m, voice: undefined, photo: undefined }, run, kind, words, by, src);
     else await (kind === 'ask' ? lensAsk : lensReply)(run, v.id, words, by, src);
-    return say(chatId, `Heard: "${words}". ${kind === 'ask' ? 'Asked' : 'Sent to'} ${v ? `${v.name}'s lens` : 'everyone'}.`, quiet);
+    return say(chatId, `Heard: "${words}"${/[.!?]$/.test(words) ? '' : '.'} ${kind === 'ask' ? 'Asked' : 'Sent to'} ${v ? `${v.name}'s lens` : 'everyone'}.`, quiet);
   }
 
   const shortLine = async (text) => (text.length <= 60 ? undefined : ai?.enabled ? await ai.oneLine(text) : trimLine(text));

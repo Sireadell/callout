@@ -87,6 +87,14 @@ test('a voice reply to a clue shows its words on that lens, and the coordinator 
   assert.match(w.tg.out.at(-1).text, /^Heard: "Check the blue door first"\. Sent to Ana's lens\.$/);
 });
 
+test('words that already end in a full stop get no second one', async () => {
+  const w = setup({ bot: { stt: hears('Check the blue door first.') } });
+  await start(w);
+  w.tg.download = async () => Buffer.from('ogg');
+  await w.bot.handle(msg(undefined, { voice: { file_id: 'v', duration: 2 }, caption: '/reply Ana' }));
+  assert.equal(w.tg.out.at(-1).text, 'Heard: "Check the blue door first." Sent to Ana\'s lens.');
+});
+
 test('a voice message captioned /ask all asks everyone in those words', async () => {
   const w = await team({ bot: { stt: hears('Is everyone OK?') } });
   w.tg.download = async () => Buffer.from('ogg');
