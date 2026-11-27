@@ -1,4 +1,4 @@
-// DEV PANEL ONLY. Starts a local Callout server with a fake Telegram, sets up a team and a run
+// DEV PANEL ONLY. Starts a local Lafiya server with a fake Telegram, sets up a team and a run
 // through the bot (as Telegram would, over the webhook), and pairs the real glasses app to it.
 import { spawn } from 'node:child_process';
 import { createHmac, randomBytes } from 'node:crypto';

@@ -708,7 +708,7 @@ start();
 function phoneStatus() {
   const out = document.getElementById('pairMsg');
   if (!out) return;
-  if (state.token) out.textContent = 'Callout is running on your glasses.';
+  if (state.token) out.textContent = 'Lafiya is running on your glasses.';
   else if (state.launch === 'glassesMenu') out.textContent = 'Opened from your glasses. Enter your code here.';
 }
 

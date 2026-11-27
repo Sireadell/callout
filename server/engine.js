@@ -1,4 +1,4 @@
-// Callout run engine. All time comes from an injected clock, so tests can
+// Lafiya run engine. All time comes from an injected clock, so tests can
 // jump forward with a fake clock. Everything is plain objects so a run can be
 // saved to a file and restored.
 import { randomBytes } from 'node:crypto';

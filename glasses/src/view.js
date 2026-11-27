@@ -89,8 +89,8 @@ function unpairedView(state, flash) {
   if (j.phase === 'expired') return screen(['CALLOUT', 'That join code expired.', 'Tap for a new one.', ...flash], ['Or enter a code on your phone.'], newCode);
   // Opened from the glasses menu, the phone may still be in a pocket: say so.
   const how = state.launch === 'glassesMenu'
-    ? ['Take out your phone, open Callout', 'in the Even app and enter your code.']
-    : ['Enter your code on the Callout page', 'on your phone.'];
+    ? ['Take out your phone, open Lafiya', 'in the Even app and enter your code.']
+    : ['Enter your code on the Lafiya page', 'on your phone.'];
   const note = j.phase === 'asking' ? ['Getting a join code...'] : j.phase === 'error' ? ['No join code. Try again in a minute.'] : [];
   return screen(['CALLOUT', 'Not paired yet.', ...how, ...flash], note, j.phase === 'asking' ? 'Double tap: exit' : newCode);
 }

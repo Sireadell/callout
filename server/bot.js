@@ -6,7 +6,7 @@ import { trimLine, suggestAnswers } from './ai.js';
 import { makeLimiter } from './limit.js';
 
 const HELP = [
-  'Callout team check-in bot.',
+  'Lafiya team check-in bot.',
   '/team <name>  set up this group as a team (run it in the group)',
   '/run <name>  start a run',
   '/add <name> | <area>  add a volunteer, get a pairing code for the glasses app',
@@ -251,7 +251,7 @@ ${AI_NOTICE}` : ''}`);
     if (name === 'sheet') {
       if (!sheet) return say(chatId, 'Google Sheet is not set up on this server.');
       const id = parseSheetId(arg);
-      if (!id) return say(chatId, `Use: /sheet <link to your sheet>. Share the sheet with ${sheet.email || 'the Callout account'} first (Editor).`);
+      if (!id) return say(chatId, `Use: /sheet <link to your sheet>. Share the sheet with ${sheet.email || 'the Lafiya account'} first (Editor).`);
       team.sheetId = id;
       return say(chatId, 'Sheet connected. Put names in tab Volunteers (column A name, column B area), then send /import. The debrief is written to tabs Debrief and Clues when the run ends.');
     }

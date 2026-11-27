@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Callout dashboard</title>
+<title>Lafiya dashboard</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
 body{font:15px system-ui;margin:0;padding:12px;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#111)}
@@ -12,7 +12,7 @@ svg{display:block;width:100%;max-width:420px;height:auto;border:1px solid #8884;
 svg .overdue{fill:#d32f2f}svg .silent{fill:#a86a00}
 #note{color:#a86a00}
 </style></head><body>
-<h1 id="title">Callout</h1><small id="note"></small><div id="map"></div><div id="list">Loading...</div><h1>Latest clues</h1><div id="clues"></div>
+<h1 id="title">Lafiya</h1><small id="note"></small><div id="map"></div><div id="list">Loading...</div><h1>Latest clues</h1><div id="clues"></div>
 <p><small>Team notices only. Not an emergency service.</small></p>
 <script>
 const tg = window.Telegram?.WebApp; tg?.ready(); tg?.expand();
@@ -22,7 +22,7 @@ const word = { ok: 'ok', due: 'check-in due', overdue: 'overdue', silent: 'gone 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 /* map:start */
 // A plain picture of where people are compared with each other, north at the top. No map service is
-// called, so no position leaves the Callout server and Telegram.
+// called, so no position leaves the Lafiya server and Telegram.
 function dotMap(volunteers, esc) {
   const here = volunteers.filter((v) => v.pos && Number.isFinite(v.pos.lat) && Number.isFinite(v.pos.lng));
   if (!here.length) return '';

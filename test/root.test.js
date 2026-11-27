@@ -20,7 +20,7 @@ test('the bare address sends the visitor to /try, and /try answers', async (t) =
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
   await new Promise((ok, fail) => {
-    server.stdout.on('data', (d) => { if (/Callout server on/.test(String(d))) ok(); });
+    server.stdout.on('data', (d) => { if (/Lafiya server on/.test(String(d))) ok(); });
     server.on('exit', (c) => fail(new Error(`server stopped (${c})`)));
   });
   const root = await fetch(`http://127.0.0.1:${port}/`, { redirect: 'manual' });

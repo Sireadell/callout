@@ -1,4 +1,4 @@
-// DEV PANEL ONLY. Loaded into a local Callout server with `node --import`.
+// DEV PANEL ONLY. Loaded into a local Lafiya server with `node --import`.
 // It answers every Telegram call on this machine, reports each one to the panel, refuses any other
 // outside address, and keeps the server on 127.0.0.1. Nothing is sent to anyone.
 import net from 'node:net';

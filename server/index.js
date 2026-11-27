@@ -1,4 +1,4 @@
-// Callout server: the glasses app talks to /api/*, Telegram talks to the bot.
+// Lafiya server: the glasses app talks to /api/*, Telegram talks to the bot.
 import http from 'node:http';
 import fs from 'node:fs';
 import { Engine } from './engine.js';
@@ -159,7 +159,7 @@ async function startTelegram() {
 }
 
 server.listen(PORT, () => {
-  console.log(`Callout server on :${PORT}`);
+  console.log(`Lafiya server on :${PORT}`);
   if (telegram) startTelegram().catch((e) => console.error('telegram start failed:', e.message));
 });
 

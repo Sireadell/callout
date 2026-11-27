@@ -177,7 +177,7 @@ function drawChat(view) {
   const chat = $('chat');
   const atEnd = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 40;
   chat.replaceChildren(...view.messages.map((m) => {
-    const who = `${m.from === 'you' ? 'You (coordinator)' : 'Callout bot'}${m.pinned ? ' · pinned status board' : ''}${m.reaction ? ` · ${m.reaction}` : ''}`;
+    const who = `${m.from === 'you' ? 'You (coordinator)' : 'Lafiya bot'}${m.pinned ? ' · pinned status board' : ''}${m.reaction ? ` · ${m.reaction}` : ''}`;
     const keys = el('div', { className: 'keys' }, m.buttons.map((b) => el('button', { type: 'button', textContent: b.text, onclick: () => send({ press: b.data, messageId: m.message_id }) })));
     const reply = m.from === 'bot' ? el('button', { type: 'button', className: 'reply', textContent: 'Reply', onclick: () => setReply(m) }) : '';
     const shot = m.photo ? el('img', { src: `data:image/jpeg;base64,${m.photo}`, alt: 'Photo you sent', className: 'shot' }) : '';

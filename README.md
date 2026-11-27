@@ -1,8 +1,10 @@
-# Callout: team check-ins on Even G2 glasses, run from Telegram
+# Lafiya: team check-ins on Even G2 glasses, run from Telegram
 
 ![CI](https://github.com/Sireadell/callout/actions/workflows/ci.yml/badge.svg)
 
-Callout is a check-in tool for small field teams on Even G2 glasses. The lens shows when your next check-in is due and how many of your team have checked in. The coordinator runs the shift from the team's Telegram group.
+*Lafiya* is how you ask "are you well?" in Hausa, which is the question every check-in asks.
+
+Lafiya is a check-in tool for small field teams on Even G2 glasses. The lens shows when your next check-in is due and how many of your team have checked in. The coordinator runs the shift from the team's Telegram group.
 
 People doing this work have their hands full. Phones stay in pockets, radios get missed, and a coordinator can't quickly see who has gone quiet.
 
@@ -16,7 +18,7 @@ People doing this work have their hands full. Phones stay in pockets, radios get
 | Status page | https://callout-dih6.onrender.com/status (which parts are on, no names or positions) |
 | Code | https://github.com/Sireadell/callout |
 
-## A Saturday round with Callout
+## A Saturday round with Lafiya
 
 Maria leads a Saturday welfare-check round. Six volunteers knock on the doors of older people who live alone, each with an area: Ana has A1, Ben has A2. Maria stays at the hall with the team's Telegram group.
 
@@ -77,7 +79,7 @@ The server uses one outside package, an MP3 encoder for voice notes. Everything 
 
 ## On the glasses
 
-| Part of the Even Hub SDK | How Callout uses it |
+| Part of the Even Hub SDK | How Lafiya uses it |
 |---|---|
 | Startup page, three text containers | The three boxes, updated in place |
 | Image container | The coordinator's photo, shrunk to 288 × 144 and greyed on the phone, caption above. Tap says "got it", swipe closes |
@@ -92,7 +94,7 @@ Speech can mean a check-in, quick clue, backup (confirm screen only), cancel, or
 
 ## Track 1 (Messaging and News) and Best Telegram
 
-Callout uses a Telegram bot and a Mini App. I left out user accounts, since acting as someone means reading their private chats.
+Lafiya uses a Telegram bot and a Mini App. I left out user accounts, since acting as someone means reading their private chats.
 
 | What it does | Telegram feature |
 |---|---|
@@ -165,7 +167,7 @@ All seven are fixed and tested: the board posted three times at once; turning on
 | Part | Where it stands |
 |---|---|
 | Voice on the lens | Simulator and PC microphone, phrases played by the computer's voice. "The bridge on Mill Lane is flooded" came back word for word. "I am OK" checked in, "I am not OK" didn't. 5 recorded phrases came back right in 3 to 4 s, and "I don't need backup" stayed a clue. One phrase was misheard once and posted as a free clue. Not tried: a human voice on the lens, the glasses mic |
-| App closed | The simulator only sends an exit right after a menu pick, which Callout ignores. Fake glasses only. Unknown whether the notice leaves a real phone |
+| App closed | The simulator only sends an exit right after a menu pick, which Lafiya ignores. Fake glasses only. Unknown whether the notice leaves a real phone |
 | Discord | A webhook notice reached a real channel in 1 second. Reply buttons with fakes only |
 | AI | Ran for real through OpenRouter (Claude Haiku): one line in 2.1 s, a summary in 2.6 s, AI buttons under a live clue (never pressed). Answer choices not yet |
 | Mini App | On the live server. Not opened inside Telegram yet |

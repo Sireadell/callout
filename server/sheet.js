@@ -38,7 +38,7 @@ export function makeSheet({ serviceAccount, fetchImpl = fetch, now = () => Date.
     if (r.status === 403 || r.status === 404) {
       const why = typeof r.text === 'function' ? await r.text().catch(() => '') : '';
       if (/has not been used|is disabled/i.test(why)) throw new Error('Google Sheets API is switched off for the Callout Google project');
-      throw new Error('sheet not shared with the Callout account');
+      throw new Error('sheet not shared with the Lafiya account');
     }
     if (!r.ok) throw new Error(`sheet ${r.status}`);
     return r.json();
