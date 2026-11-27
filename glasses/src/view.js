@@ -86,22 +86,22 @@ function unpairedView(state, flash) {
     return screen([`Hi ${String(j.name || '').slice(0, 20)}.`, '', 'Waiting for the coordinator', 'to pick your area.', ...flash], [String(j.team || '').slice(0, COLS)], 'Double tap: exit');
   }
   const newCode = 'Tap: new code. Double tap: exit.';
-  if (j.phase === 'expired') return screen(['CALLOUT', 'That join code expired.', 'Tap for a new one.', ...flash], ['Or enter a code on your phone.'], newCode);
+  if (j.phase === 'expired') return screen(['LAFIYA', 'That join code expired.', 'Tap for a new one.', ...flash], ['Or enter a code on your phone.'], newCode);
   // Opened from the glasses menu, the phone may still be in a pocket: say so.
   const how = state.launch === 'glassesMenu'
     ? ['Take out your phone, open Lafiya', 'in the Even app and enter your code.']
     : ['Enter your code on the Lafiya page', 'on your phone.'];
   const note = j.phase === 'asking' ? ['Getting a join code...'] : j.phase === 'error' ? ['No join code. Try again in a minute.'] : [];
-  return screen(['CALLOUT', 'Not paired yet.', ...how, ...flash], note, j.phase === 'asking' ? 'Double tap: exit' : newCode);
+  return screen(['LAFIYA', 'Not paired yet.', ...how, ...flash], note, j.phase === 'asking' ? 'Double tap: exit' : newCode);
 }
 
 // The main screen. Main box: the countdown, or the newest reply while it shows. A short answer
 // to the last gesture (state.flash) always gets room.
 export function glanceView(state, now = Date.now()) {
   const flash = state.flash ? [state.flash] : [];
-  if (!state.token && state.ended) return screen(['CALLOUT', '', 'Run finished.', 'Thank you.', ...flash], [], 'Tap: join a team. Double tap: exit.');
+  if (!state.token && state.ended) return screen(['LAFIYA', '', 'Run finished.', 'Thank you.', ...flash], [], 'Tap: join a team. Double tap: exit.');
   if (!state.token) return unpairedView(state, flash);
-  if (!state.sync) return screen(['CALLOUT', 'Connecting...', ...flash], warnings(state, now), 'Double tap: exit');
+  if (!state.sync) return screen(['LAFIYA', 'Connecting...', ...flash], warnings(state, now), 'Double tap: exit');
   const s = state.sync;
   const due = dueIn(state, now);
   const team = (Array.isArray(s.team) ? s.team : Object.values(s.team || {})).filter((t) => t.state !== 'out');
