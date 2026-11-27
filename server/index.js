@@ -99,6 +99,11 @@ const server = http.createServer(async (req, res) => {
     }
     // Telegram's updates are never limited: they are checked by their secret above.
     if (limited(callerOf(req))) return send(res, 429, { error: 'slow down' });
+    // The bare address opens the try page, so a first click never lands on "not found".
+    if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/') {
+      res.writeHead(302, { location: '/try' });
+      return res.end();
+    }
     if (req.method === 'POST' && url.pathname === '/discord/interactions') {
       const raw = await rawBody(req);
       if (!process.env.DISCORD_PUBLIC_KEY || !verifyInteraction(process.env.DISCORD_PUBLIC_KEY, String(req.headers['x-signature-ed25519'] || ''), req.headers['x-signature-timestamp'], raw)) return send(res, 401, {});
