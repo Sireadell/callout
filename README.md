@@ -8,7 +8,7 @@ I built it because people doing this work have their hands full. Phones stay in 
 
 > Has everyone on my team checked in, and if not, who and where were they last?
 
-**Seen on the live server with real Telegram: a coordinator's reply reaches the lens in about 2 seconds.** That held for a button press, a typed line, a photo and a question's answer coming back. The other way, once a clue reaches the server, Telegram accepts it as a map pin in about 0.65 seconds (626, 633, 662 and 687 ms on four clues).
+**Seen on the live server with real Telegram: a coordinator's reply reaches the lens in about 2 seconds.** That held for a button press, a typed line, a photo and a question's answer coming back. Once a reply reaches the server, the waiting lens has it within 2 ms (22 replies). The other way, once a clue reaches the server, Telegram accepts it as a map pin in about 0.65 seconds (626, 633, 662 and 687 ms on four clues).
 
 | | |
 |---|---|
@@ -140,7 +140,7 @@ What goes to the AI service, only if a key is set (Claude or OpenRouter): clue w
 | "I'm not OK", "no" and "help" never check in; backup never sent by voice alone | [voice.test.js](glasses/test/voice.test.js), [intent.test.js](test/intent.test.js) | Tested. Live by voice for "I am not OK" only (see below) |
 | Hold to talk, three-box lens, quick clues per run, one-tap answers, 4 digit join | [glasses/test](glasses/test), [ask.test.js](test/ask.test.js), [join.test.js](test/join.test.js) | Tested. Live: `/ask` to Ben, "No" tapped on his lens, the answer under the question in about 2 seconds |
 | Replies pushed by a held request, `/status` timings | [longpoll.test.js](test/longpoll.test.js) | Tested. Live: a button press, a typed reply and a photo each reached the lens in about 2 seconds |
-| `/reply all`, `/ask all` with a count on the board, voice message replies | [everyone.test.js](test/everyone.test.js), [stt.test.js](test/stt.test.js) | Tested with fakes. Not live yet |
+| `/reply all`, `/ask all` with a count on the board, voice message replies | [everyone.test.js](test/everyone.test.js), [stt.test.js](test/stt.test.js) | Tested. Live: `/reply all` reached both lenses, and after `/ask all Are you OK?` the board read "Yes 1, No 1". Then 20 typed replies in a row all reached their lens. Voice message replies: fakes only so far |
 | One-person messages, AI suggestions, button colours, table debrief, two teams, app-closed notice | [private.test.js](test/private.test.js), [drafts.test.js](test/drafts.test.js), [debrief.test.js](test/debrief.test.js), [closed.test.js](test/closed.test.js) | Tested. Seen live: a code shown "Only visible to you" and AI buttons appearing (never pressed). The rest fake Telegram only |
 | Offline queue keeps its own time (30 minute cap, never the future) | [review.test.js](test/review.test.js) | Tested in code. No real signal loss yet |
 | `/end clear` | [review.test.js](test/review.test.js) | Fake Telegram only |
@@ -168,7 +168,7 @@ All seven are fixed and tested: the board posted three times when notices came t
 | Part | Where it stands |
 |---|---|
 | Voice | 26 November, live server, simulator, PC microphone, phrases played by the computer's voice (not a person, not real glasses), hold to talk: "The bridge on Mill Lane is flooded" came back word for word and posted with reply and AI buttons. "I am OK" checked in and "I am not OK" didn't. "House empty" was first heard as "Margin. Only house empty." and posted as a free clue, then matched on the second try. A second live run played 5 recorded phrases: all came back right in 3 to 4 seconds, "I don't need backup" stayed a clue, and a spoken "I'm okay" cleared a due check-in. Not tried: a human voice, the glasses mic |
-| New in this version | `/reply all`, `/ask all` and voice message replies: fakes only so far |
+| New in this version | Voice message replies: fakes only so far. `/reply all` and `/ask all` ran once live, with two simulated lenses |
 | App closed | The simulator only sends an exit right after a menu pick, which Callout ignores. Fake glasses only. Unknown whether the notice leaves a real phone |
 | Discord | A webhook notice reached a real channel in 1 second. Reply buttons with fakes only |
 | AI | Ran for real through OpenRouter (Claude Haiku): one line in 2.1 s, a summary in 2.6 s, AI buttons seen appearing under a live clue, never pressed. Answer choices not yet |
