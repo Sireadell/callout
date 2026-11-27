@@ -4,47 +4,64 @@
 
 *Lafiya* is how you ask "are you well?" in Hausa, which is the question every check-in asks.
 
-Lafiya is a check-in tool for small field teams on Even G2 glasses. The lens shows when your next check-in is due and how many of your team have checked in. The coordinator runs the shift from the team's Telegram group.
+**A check-in on Even G2 glasses, run from the team's Telegram group, so a coordinator knows in minutes when someone on a small field team goes quiet.**
 
-People doing this work have their hands full. Phones stay in pockets, radios get missed, and a coordinator can't quickly see who has gone quiet.
-
-> Has everyone on my team checked in, and if not, who and where were they last?
-
-**Seen on the live server with real Telegram: a coordinator's reply reaches the lens in about 2 seconds.** That held for a button press, a typed line, a photo and a question's answer coming back. Once a reply reaches the server, the waiting lens has it within 2 ms (22 replies). The other way, once a clue reaches the server, Telegram accepts it as a map pin in about 0.65 seconds (four clues, 626 to 687 ms).
+![Ana's lens: next check-in time, her area and how many of the team have checked in](docs/img/03-lens.jpg)
+*Ana's lens in the Even Hub simulator, shown over a stock photo of a doorway.*
 
 | | |
 |---|---|
-| Try it, no glasses | https://callout-dih6.onrender.com (the lens and the team chat side by side in your browser, no sign-in) |
+| Try it, no glasses | https://callout-dih6.onrender.com/try (the lens and the team chat side by side, no sign-in) |
 | Status page | https://callout-dih6.onrender.com/status (which parts are on, no names or positions) |
 | Code | https://github.com/Sireadell/callout |
 
-## A Saturday round with Lafiya
+## Why I built it
 
-Maria leads a Saturday welfare-check round. Six volunteers knock on the doors of older people who live alone, each with an area: Ana has A1, Ben has A2. Maria stays at the hall with the team's Telegram group.
+![52 hours before anyone noticed](docs/img/01-52-hours.jpg)
 
-Ana's lens (bright main line, dim status, dim hint):
+October 2004, the Scottish Borders. A stand-in gamekeeper, working alone, was badly hurt when his quad bike rolled over. He had no way to raise the alarm or report in. Nobody noticed he was missing for 52 hours. He didn't survive.
 
-```
-Next check-in 08:42
+The safety regulator's lesson was plain: people who work alone need a way of keeping in touch ([HSE case study](https://www.hse.gov.uk/agriculture/experience/lone-working-gamekeeper.htm)). That's what I built Lafiya for: small teams out on foot, like welfare-check rounds, charity drivers and flood wardens.
 
-A1
+## One round, start to finish
 
-Team 5/6 checked in | Saturday round
+![Maria in the hall, Ana at the door](docs/img/02-round.jpg)
 
-Tap: check in. Hold: talk. Double: exit.
-```
+Maria runs a volunteer round from the hall. Ana is at a door in the rain, hands full, phone in her pocket. Her lens shows when her next check-in is due, her area, and how many of the team have checked in. One tap and she's checked in. The pinned board in the group updates by itself.
 
-Ana taps the ring to check in. Nobody answers at number 14, so she picks the quick clue "No answer". It lands in the group as a map pin with reply buttons. Maria presses "Move to your next area", it shows on Ana's lens, and Ana taps once for "got it". Maria asks "How many people inside?" and Ana answers with one tap. When Ana isn't sure which door is 14, Maria replies with a photo of it. On a phone call, Maria answers the next clue with a Telegram voice message, and Ana reads its words.
+![Ana's clue in the group, with reply buttons](docs/img/04-clue.jpg)
 
-When the rain gets heavy, Maria sends `/ask all Are you OK?`. Every lens gets the question with one-tap answers, and the pinned board keeps count: "Yes 4, No 1, no answer yet 1 (Ben)". She can see who to call first. `/reply all Come back to the hall` reaches every lens at once.
+The side gate is locked, so she picks a quick clue from the menu. It lands in the group as a map pin with reply buttons, plus two that AI drafts from her clue.
 
-Ben misses a check-in (due every 15 minutes by default). At 17 minutes Maria gets his last position and a "Reached them, mark OK" button. At 22 minutes the whole team is told. At `/end`, everyone's counts go to the group as a table (and to Discord and a Google Sheet if set up), with a short summary if AI is on.
+![Maria's reply reaching Ana's lens](docs/img/05-reply.jpg)
 
-Delivery drivers and flood wardens on a flood night work this way too.
+Maria taps "Move to your next area". **About two seconds later it's on Ana's lens.** That was seen on the live server with real Telegram, and it held for a typed line, a photo and a question's answer too. Ana taps once, and the group sees she got it. Maria can also send a photo of the right door, a voice message that Ana reads as words, or `/ask all Are you OK?`, and the pinned board counts the answers.
+
+![Ben's lens shows overdue, and Maria gets the notice](docs/img/06-missed.jpg)
+
+Then Ben misses a check-in:
+
+![Timeline: check-in at 0, next due at 15, coordinator told at 17, whole team told at 22](docs/img/timeline.png)
+
+Once Maria reaches him, one button marks him OK.
+
+![The end-of-run table in the group](docs/img/07-debrief.jpg)
+
+When Maria ends the run, the group gets a table: check-ins, missed ones, and any area nobody checked in from, with a short AI summary. No position is kept after the run.
+
+It's built on the Even Hub SDK (text and image containers, ring and temple taps, the glasses microphone, motion and device status) and on Telegram's Bot API with a Mini App. A clue becomes a Telegram map pin about 0.65 seconds after it reaches the server (four clues, 626 to 687 ms).
 
 ## Check it in one minute
 
-The quickest way is [/try](https://callout-dih6.onrender.com/try): your own practice team for 30 minutes, nothing to install. It runs the real lens app and bot, with the chat on the page instead of Telegram. A preview, not the glasses.
+![The try page: the lens on the left, the team chat on the right](docs/img/08-try.jpg)
+
+Open [/try](https://callout-dih6.onrender.com/try). You don't need glasses, a sign-in or an install. You get your own practice team for 30 minutes on the real lens app and bot, with the chat on the page instead of Telegram. It's a preview, not the glasses.
+
+1. Press **Tap** to check in. The status board in the chat updates.
+2. Type a clue, say "gate on Mill Lane is locked", and press **Say it**. It lands in the chat with reply buttons.
+3. Press a reply button there. It shows on the lens. Tap again to say "got it".
+
+The page lists more, up to a missed check-in notice after about two and a half minutes.
 
 To check the code yourself, you need Node 22 or newer. No keys or accounts.
 
@@ -63,7 +80,7 @@ npm test
 | `cd glasses; npm install; npm test` | The lens app against fake glasses and a fake server | 66 of 66 pass |
 | `npm ci --prefix glasses; npm run panel:proof` | The real lens app against a local server, with fake glasses input and a fake Telegram | All checks pass |
 
-GitHub Actions runs all four on each push. The glasses app is a private beta on Even Hub (0.2.1) with 3 testers invited. Nobody has run it on real glasses yet.
+GitHub Actions runs all four on each push. The glasses app is a private beta on Even Hub (0.2.2) with 3 testers invited. Nobody has run it on real glasses yet.
 
 The server uses one outside package, an MP3 encoder for voice notes. Everything else is plain Node.
 
@@ -72,7 +89,7 @@ The server uses one outside package, an MP3 encoder for voice notes. Everything 
 | Judging line | Where you see it |
 |---|---|
 | "Usefulness on G2 · 30%. Solves a real everyday moment, works at a glance and hands-free." | The check-in on a field shift. At a glance: countdown, area, team count. Hands-free: hold to talk, and a due check-in listens for "OK" |
-| "Read and write · 25%. Acting is fast: a short phrase, one tap or the ring, with smart defaults or AI drafts instead of long dictation." | Read: the reply as one line, a photo from the coordinator, and questions with up to 3 one-tap answers. Write: one tap checks in, picks a quick clue or says "got it", or hold, speak, let go. The coordinator answers with 4 buttons, up to 2 AI suggestions, a reaction, a line, a photo or a voice message, to one person or to everyone |
+| "Read and write · 25%. Acting is fast: a short phrase, one tap or the ring, with smart defaults or AI drafts instead of long dictation." | Read: the reply as one line, a photo from the coordinator, and questions with up to 3 one-tap answers. Write: one tap checks in, picks a quick clue or says "got it", or hold, speak, let go. The coordinator answers with a button, an AI suggestion, a reaction, a line, a photo or a voice message, to one person or everyone |
 | "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram, and a try page that needs no glasses. 189 server tests, 66 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
 | "UX for display and voice · 15%. Clear on a 576 × 288 monochrome display, natural by voice." | A bright main line, a dim status line and a dim hint, each with a line limit. Plain glyphs (● ○ ▲), since the lens drops emoji. Every gesture gets an answer on screen |
 | "Business potential and safety · 10%. Real users and demand, careful with data and money." | Team notices only, not an emergency service. "I'm not OK" never checks in. Only the coordinator can act. No position kept after a run, keys only as hashes, the run notice says what goes to the AI. No real users yet, buyers are a guess |
@@ -94,29 +111,31 @@ Speech can mean a check-in, quick clue, backup (confirm screen only), cancel, or
 
 ## Track 1 (Messaging and News) and Best Telegram
 
-Lafiya uses a Telegram bot and a Mini App. I left out user accounts, since acting as someone means reading their private chats.
+| Prize line on the event page | Where Lafiya answers it |
+|---|---|
+| Track 1 example: "Reply by voice, or approve a reply drafted by an AI agent" | Volunteers answer by voice (hold to talk) or with one tap. Under each clue the coordinator gets up to 2 AI-drafted replies to approve with one press (seen live, not yet pressed live) |
+| Best Telegram: "the best use of Telegram (accounts, bots, channels or Mini Apps) on G2" | A bot, and a Mini App (on the live server, not yet opened inside Telegram). I left out user accounts, since acting as someone means reading their private chats |
 
 | What it does | Telegram feature |
 |---|---|
-| Add-to-group link asking only the rights needed, and says which is missing | `startgroup` with `admin=`, `my_chat_member`, `setMyCommands` |
-| `/join 4821` with the code on the lens; the coordinator picks the area; the sender's chat links | Inline keyboard |
+| Add-to-group link asking only the rights needed, naming any missing | `startgroup` with `admin=`, `my_chat_member`, `setMyCommands` |
+| `/join 4821` with the lens code, then the coordinator picks the area | Inline keyboard |
 | Refusals and group pairing codes shown to one person only, never safety notices | Ephemeral messages |
 | One status board, pinned and edited in place | `pinChatMessage`, `editMessageText` |
-| Clues and backup requests as map pins with reply buttons and up to 2 AI suggestions. Mark OK green, Check in blue | `sendVenue`, inline keyboard, button `style` |
+| Clues and backup requests as map pins with reply buttons and AI suggestions. Mark OK green, Check in blue | `sendVenue`, inline keyboard, button `style` |
 | Live location (stopped at the end), a topic per run, a photo under its clue | `editMessageLiveLocation`, `createForumTopic`, `sendPhoto` |
-| The coordinator replies with a photo and it shows on the lens | `getFile` |
-| A coordinator voice message: its words show on the lens, and the bot says what it heard | `getFile`, speech to text |
+| A coordinator photo or voice message shows on the lens (voice as words) | `getFile`, speech to text |
 | `/reply all` and `/ask all` reach every lens on the run, and the board counts the answers | `editMessageText` |
 | `/voice on`: a spoken clue's recording under the clue, protected. Off by default | `sendVoice` |
 | Check-ins quiet, missed ones buzz, positions can't be forwarded | `disable_notification`, `protect_content` |
-| Thumbs up shows "Seen" on the lens, OK hand "OK", heart "Thanks". The bot reacts once a reply is seen | `message_reaction`, `setMessageReaction` |
+| Reactions show on the lens (thumbs up is "Seen"), and the bot reacts once a reply is seen | `message_reaction`, `setMessageReaction` |
 | Debrief as a table, with areas nobody checked in from | Rich message table, plain text fallback |
 | Coordinator dashboard, positions as dots, no map service | Mini App, sign-in checked on the server |
 | Only the setup person or an admin can act; one coordinator can run two teams | `getChatMember` |
 | "Check-in time" in the volunteer's own chat, with a Check in button that works while the app is paused | Private chat |
 | Stays under limits, webhook or polling | 3.1 s between group sends, retry on 429, `setWebhook` with a secret |
 
-Discord is a second channel: webhook notices, and signature-checked reply buttons that only ids in `DISCORD_COORDINATOR_IDS` can press.
+Discord is a second channel: webhook notices, and signed reply buttons that only listed coordinators can press.
 
 ## Track 4: the Sheet and AI
 
@@ -130,6 +149,8 @@ Discord is a second channel: webhook notices, and signature-checked reply button
 What goes to the AI service, only if a key is set (Claude or OpenRouter): clue words, coordinator replies over 60 characters, open questions, and the run length and counts for the summary. The server adds no names or positions, but words go as typed or said, so a name inside one goes too. Without a key, long replies are trimmed and answers come from word rules.
 
 ## How each claim is checked
+
+"Live" below means my own runs with real Telegram, including full rounds on the live server from 25 to 27 November, with my own accounts and two Even Hub simulators. No real glasses and no other people. After the PC locked, the group saw "gone quiet for 3 minutes", then "back online".
 
 | Claim | Shown by | Status |
 |---|---|---|
@@ -151,12 +172,6 @@ What goes to the AI service, only if a key is set (Claude or OpenRouter): clue w
 | Photo from the coordinator on the lens | [picture.test.js](test/picture.test.js), [picture.test.js](glasses/test/picture.test.js) | Tested. Sent from real Telegram as a reply to a clue and drawn in the simulator |
 | Voice notes, off until `/voice on`, never stored | [voicenote.test.js](test/voicenote.test.js), [voicenote.test.js](glasses/test/voicenote.test.js) | Tested. Arrived in real Telegram under the clue, played back, and removed by `/end clear`. Off, no recording went out |
 | `/try` practice teams: separate, 30 minutes, capped, no Telegram, Sheet, AI or disk | [sandbox.test.js](test/sandbox.test.js) | Tested, and run in a browser at desktop and phone width |
-
-## What I've seen work on real Telegram
-
-With my own bot and group I saw the admin link, topics, board, clue pins, photos, protected content, live location, reactions, replies on the lens, notices and `/end`. A second account's `/end` was refused. `/sheet`, `/import` and `/end` worked with a real Google Sheet.
-
-From 25 to 27 November I ran full rounds on the live server in a real Telegram group, with my own accounts and two Even Hub simulators, no real glasses and no other people (results in the table above). After the PC locked, the group saw "gone quiet for 3 minutes" and then "back online".
 
 ## Bugs the live test found
 
