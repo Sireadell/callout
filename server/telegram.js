@@ -3,6 +3,9 @@
 // a gap between sends to one chat) and waits out 429 "retry_after" replies.
 const sleepReal = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Everything the bot listens to. pre_checkout_query is the last check before a Stars payment goes through.
+export const UPDATES = ['message', 'callback_query', 'my_chat_member', 'message_reaction', 'pre_checkout_query'];
+
 export class Telegram {
   constructor(token, { fetchImpl = fetch, minGapMs = 1100, sleep = sleepReal } = {}) {
     this.token = token;
@@ -126,12 +129,23 @@ export class Telegram {
   setMyCommands(commands, scope = { type: 'default' }) { return this.call('setMyCommands', { commands, scope }); }
   // Webhook with a secret header: Telegram sends it back on every update and the server checks it.
   setWebhook(url, secret) {
-    return this.call('setWebhook', { url, secret_token: secret, allowed_updates: ['message', 'callback_query', 'my_chat_member', 'message_reaction'] });
+    return this.call('setWebhook', { url, secret_token: secret, allowed_updates: UPDATES });
   }
   // A small reaction on a message (thumbs up, OK hand). Cheaper and quieter than a reply line.
   setReaction(chat, messageId, emoji) { return this.call('setMessageReaction', { chat_id: chat, message_id: messageId, reaction: [{ type: 'emoji', emoji }] }); }
+  // Payments in Telegram Stars: currency XTR, no provider token. A subscription period is allowed for Stars only.
+  createInvoiceLink({ title, description, payload, amount, label, periodSeconds }) {
+    const body = { title: title.slice(0, 32), description: description.slice(0, 255), payload, provider_token: '', currency: 'XTR', prices: [{ label: label.slice(0, 32), amount }] };
+    if (periodSeconds) body.subscription_period = periodSeconds;
+    return this.call('createInvoiceLink', body);
+  }
+  // Must be answered within 10 seconds of every pre_checkout_query, or the payment fails.
+  answerPreCheckoutQuery(id, ok, errorMessage) {
+    return this.call('answerPreCheckoutQuery', ok ? { pre_checkout_query_id: id, ok: true } : { pre_checkout_query_id: id, ok: false, error_message: String(errorMessage || 'Payment not available').slice(0, 200) });
+  }
+  refundStarPayment(userId, chargeId) { return this.call('refundStarPayment', { user_id: userId, telegram_payment_charge_id: chargeId }); }
   answerCallback(id, text) { return this.call('answerCallbackQuery', { callback_query_id: id, text }); }
   getUpdates(offset, timeout = 25) {
-    return this.call('getUpdates', { offset, timeout, allowed_updates: ['message', 'callback_query', 'my_chat_member', 'message_reaction'] });
+    return this.call('getUpdates', { offset, timeout, allowed_updates: UPDATES });
   }
 }

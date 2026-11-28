@@ -34,10 +34,12 @@ export function makeMiniApp({ engine, botToken, presets, now = () => Date.now() 
   return {
     state(initData) {
       const { team, run } = who(initData);
-      if (!run) return { team: team.name, run: null, volunteers: [], clues: [], presets };
+      // Only the coordinator sees this: the tier and the end date, never who paid or the charge.
+      const plan = team.plan?.tier === 'team' && team.plan.until > now() ? { tier: 'team', until: team.plan.until } : { tier: 'free' };
+      if (!run) return { team: team.name, run: null, plan, volunteers: [], clues: [], presets };
       const status = engine.teamStatus(run.id);
       return {
-        team: team.name, run: run.name, status: run.status, presets,
+        team: team.name, run: run.name, status: run.status, plan, presets,
         volunteers: status.map((s) => { const v = run.volunteers[s.id]; return { ...s, pos: v.pos ? { lat: v.pos.lat, lng: v.pos.lng, at: v.pos.at } : null, checkins: v.checkins }; }),
         clues: run.clues.slice(-20).reverse().map((c) => ({ id: c.id, by: run.volunteers[c.volunteerId]?.name, text: c.text, at: c.at, pos: c.pos })),
       };

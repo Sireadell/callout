@@ -21,6 +21,10 @@ const HELP = [
   '/app  open the team dashboard (in a private chat with me)',
   '/sheet <link>  connect a Google Sheet (tab Volunteers: name, area)',
   '/import  add every volunteer listed in the sheet',
+  '/plan  show the plan and pay for the Team plan with Telegram Stars (coordinator)',
+  '/refund  get the Team plan payment back (only who paid, within 7 days)',
+  '/paysupport  help with a payment',
+  '/terms  what the Team plan is',
   '/end  finish the run and post the debrief (/end clear also deletes the position messages)',
   'Team notices only. This is not an emergency service.',
 ].join('\n');
@@ -36,20 +40,28 @@ const RIGHTS = [
 const ADMIN_LINK = (bot) => `https://t.me/${bot}?startgroup=setup&admin=pin_messages+manage_topics`;
 
 export const COMMANDS = {
-  everyone: [{ command: 'start', description: 'How this works' }, { command: 'join', description: 'Join with the code on your glasses' }, { command: 'help', description: 'List the commands' }],
+  everyone: [{ command: 'start', description: 'How this works' }, { command: 'join', description: 'Join with the code on your glasses' }, { command: 'paysupport', description: 'Help with a payment' }, { command: 'terms', description: 'Team plan terms' }, { command: 'help', description: 'List the commands' }],
   coordinator: [
     { command: 'team', description: 'Make this group a team' }, { command: 'run', description: 'Start a run' },
     { command: 'add', description: 'Add a volunteer: name | area' }, { command: 'status', description: 'Who is due or overdue' }, { command: 'join', description: 'Join with the code on your glasses' }, { command: 'interval', description: 'Check-in gap in minutes (5 to 60)' }, { command: 'clues', description: 'Set the one-tap clues on the lens' }, { command: 'voice', description: 'Voice notes with clues: on or off' },
     { command: 'reply', description: 'Send a line to a volunteer, or all' }, { command: 'ask', description: 'Ask a volunteer, or all, a question' }, { command: 'app', description: 'Open the team dashboard' }, { command: 'sheet', description: 'Connect a Google Sheet' }, { command: 'import', description: 'Add volunteers from the sheet' },
     { command: 'end', description: 'Finish the run' },
+    { command: 'plan', description: 'Team plan, paid with Stars' }, { command: 'refund', description: 'Refund the Team plan' },
     { command: 'coordinator', description: 'Send private notices to me' }, { command: 'help', description: 'List the commands' },
   ],
 };
 
 // Commands that change a run. Everyone in the group can read the board; only the coordinator or a group admin can do these.
-const COORD_ONLY = new Set(['coordinator', 'ask', 'voice', 'clues', 'interval', 'run', 'add', 'reply', 'sheet', 'import', 'end']);
+const COORD_ONLY = new Set(['coordinator', 'ask', 'voice', 'clues', 'interval', 'run', 'add', 'reply', 'sheet', 'import', 'end', 'plan']);
 
-export function makeBot({ engine, telegram, router, joins = null, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null, stt = null }) {
+const DAY = 24 * 60 * 60_000;
+const PLAN_DAYS = 30;
+const REFUND_DAYS = 7;
+const dateOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+// Telegram Stars team plan: the payload on an invoice names the team that gets it.
+const payloadOf = (teamId) => `team:${teamId}`;
+
+export function makeBot({ engine, telegram, router, joins = null, botUsername = 'callout_bot', ai = null, sheet = null, discordDefault = null, appUrl = null, stt = null, freePeople = null, planStars = 250 }) {
   const say = (chatId, text, extra) => telegram.send(chatId, text, extra);
 
   // Wrong join codes are counted, so a code cannot be found by trying numbers.
@@ -84,10 +96,18 @@ export function makeBot({ engine, telegram, router, joins = null, botUsername = 
   }
 
   async function admit(chatId, claimId, choice) {
+    const claim = joins.pending(claimId);
+    const run = claim && engine.runs[claim.runId];
+    if (run && !choice.volunteerId && overCap(engine.teams[run.teamId], run)) return say(chatId, capMessage());
     let joined;
     try { joined = joins.admit(claimId, choice); } catch { return say(chatId, 'That code has expired. Get a new one on the glasses.'); }
     return say(chatId, `${joined.name} is in (${joined.area}). For private check-in reminders, press Start in a private chat with me: https://t.me/${botUsername}`, { disable_notification: true });
   }
+
+  // Plans. With freePeople unset (practice team, proof script) there is no cap at all.
+  const planOn = (team) => team.plan?.tier === 'team' && team.plan.until > clockNow();
+  const capMessage = () => `Free plan covers ${freePeople} people per run. Send /plan to see the Team plan.`;
+  const overCap = (team, run, adding = 1) => freePeople != null && !planOn(team) && Object.keys(run.volunteers).length + adding > freePeople;
 
   // The person who set up the team, or a group admin.
   async function isCoord(team, userId, chatId) {
@@ -138,6 +158,7 @@ Anyone in this group can see this. ${how}`);
       if (t?.telegram?.coordinatorChatId === m.chat.id) t.telegram.coordinatorChatId = m.migrate_to_chat_id;
       return;
     }
+    if (m.successful_payment) return onPaid(m);
     const chatId = m.chat.id;
     // A photo or voice message can carry a command in its caption: /reply Ana look for this.
     const text = (m.text || ((m.photo || m.voice) && m.caption) || '').trim();
@@ -158,6 +179,8 @@ Anyone in this group can see this. ${how}`);
 To set up a team, add me to your group with the right permissions:
 ${ADMIN_LINK(botUsername)}`);
     if (name === 'start' || name === 'help') return say(chatId, HELP);
+    if (name === 'paysupport') return say(chatId, `Payment help: send /refund within ${REFUND_DAYS} days of paying (only the person who paid can), or contact the coordinator who set up the team. Payments are made with Telegram Stars.`);
+    if (name === 'terms') return say(chatId, `Team plan: no limit on people per run, for ${PLAN_DAYS} days, paid with ${planStars} Telegram Stars and renewed each month until you cancel the subscription in Telegram. The free plan covers ${freePeople ?? 'a set number of'} people per run. Refunds: /refund within ${REFUND_DAYS} days, by the person who paid. Team notices only, this is not an emergency service.`);
     if (name === 'team') {
       if (!isGroup) return say(chatId, 'Run /team inside your team group, with this bot added.');
       if (engine.teamByChat(chatId)) return say(chatId, 'This group is already a team.');
@@ -168,6 +191,7 @@ ${ADMIN_LINK(botUsername)}`);
     const team = engine.teamByChat(chatId);
     if (!team) return say(chatId, 'No team yet. Add me to your group and send /team <name>.');
 
+    if (name === 'refund') return onRefund(m, team);
     if (COORD_ONLY.has(name) && !(await isCoord(team, m.from?.id, chatId))) return refuse(chatId, m.from?.id);
 
     if (name === 'coordinator') {
@@ -191,6 +215,7 @@ Everyone who joins agrees to share their position with this group while the run 
 
 ${AI_NOTICE}` : ''}`);
     }
+    if (name === 'plan') return onPlan(m, team);
     let run = engine.activeRun(team.id);
     // /reply and /ask from a private chat can mean a volunteer in any of the teams that use this chat.
     if (!isGroup && (name === 'reply' || name === 'ask')) {
@@ -213,6 +238,7 @@ ${AI_NOTICE}` : ''}`);
       if (!vn || !area) return say(chatId, 'Use: /add <name> | <area>');
       // Someone added but not joined yet gets a fresh code instead of a second place on the list.
       const waiting = Object.values(run.volunteers).find((x) => x.status === 'waiting' && x.name.toLowerCase() === vn.toLowerCase());
+      if (!waiting && overCap(team, run)) return say(chatId, capMessage());
       const { code } = waiting ? engine.newCodeFor(run.id, waiting.id, area) : engine.addVolunteer(run.id, { name: vn, area });
       return sendCodes(team, chatId, m.from?.id, `${vn} (${area}): enter this code in the glasses app within 15 minutes, once only:\n${code}\n\nOptional: ${vn} can open https://t.me/${botUsername}?start=${code} to get private messages from me. Give it to ${vn} only.`, `Added ${vn} (${area}). The code is private.`);
     }
@@ -265,6 +291,7 @@ ${AI_NOTICE}` : ''}`);
       const fresh = list.filter(({ name: n }) => !have.has(n.toLowerCase()));
       const skipped = list.length - fresh.length;
       if (!fresh.length) return say(chatId, 'Everyone in the sheet is already in this run.');
+      if (overCap(team, run, fresh.length)) return say(chatId, capMessage());
       const lines = fresh.map(({ name: n, area }) => `${n} (${area}): ${engine.addVolunteer(run.id, { name: n, area }).code}`);
       const added = `Added ${fresh.length}${skipped ? `, ${skipped} already in the run` : ''}.`;
       return sendCodes(team, chatId, m.from?.id, `${added} Each person enters their code in the glasses app within 15 minutes, once only:\n${lines.join('\n')}`, added);
@@ -282,6 +309,50 @@ ${AI_NOTICE}` : ''}`);
       return;
     }
     return say(chatId, HELP);
+  }
+
+  // /plan: the current plan and a button that opens the Stars invoice.
+  async function onPlan(m, team) {
+    const chatId = m.chat.id;
+    const now = planOn(team) ? `Team plan until ${dateOf(team.plan.until)}.` : `Free plan: up to ${freePeople ?? 'a set number of'} people per run.`;
+    if (!telegram.createInvoiceLink || freePeople == null) return say(chatId, `${now} Payments are not set up on this server.`);
+    let link;
+    try { link = await telegram.createInvoiceLink({ title: 'Lafiya Team plan', description: `No limit on people per run, for ${PLAN_DAYS} days. Renews monthly in Telegram Stars.`, payload: payloadOf(team.id), amount: planStars, label: 'Team plan, 30 days', periodSeconds: PLAN_DAYS * 24 * 3600 }); }
+    catch { return say(chatId, `${now} I could not make the payment link just now. Try again in a minute.`); }
+    return say(chatId, `${now} The Team plan removes the people cap: ${planStars} Stars every 30 days. Send /terms to read the terms.`, { reply_markup: { inline_keyboard: [[{ text: `Pay ${planStars} Stars`, url: link }]] } });
+  }
+
+  // The last check before a Stars payment. It must be answered, so every path ends in an answer.
+  async function onPreCheckout(q) {
+    const team = engine.teams[String(q.invoice_payload || '').match(/^team:(.+)$/)?.[1]];
+    try { await telegram.answerPreCheckoutQuery(q.id, Boolean(team), team ? undefined : 'This plan is not available for that team.'); } catch { /* Telegram will show the failure */ }
+  }
+
+  async function onPaid(m) {
+    const pay = m.successful_payment;
+    const team = engine.teams[String(pay.invoice_payload || '').match(/^team:(.+)$/)?.[1]];
+    if (!team) return;
+    const now = clockNow();
+    const until = pay.subscription_expiration_date ? pay.subscription_expiration_date * 1000 : now + PLAN_DAYS * DAY;
+    team.plan = { tier: 'team', until, chargeId: pay.telegram_payment_charge_id, payer: m.from?.id, paidAt: now };
+    engine.changed();
+    const text = `Team plan active until ${dateOf(until)}.`;
+    const group = team.telegram?.chatId;
+    if (m.chat.id !== group) await say(m.chat.id, text).catch(() => {});
+    if (group != null) await say(group, text);
+  }
+
+  async function onRefund(m, team) {
+    const chatId = m.chat.id;
+    const plan = team.plan;
+    if (!plan?.chargeId) return say(chatId, 'There is no paid plan to refund.');
+    if (m.from?.id !== plan.payer) return say(chatId, 'Only the person who paid can ask for a refund.');
+    if (clockNow() - plan.paidAt > REFUND_DAYS * DAY) return say(chatId, `Refunds are only possible within ${REFUND_DAYS} days of paying.`);
+    try { await telegram.refundStarPayment(plan.payer, plan.chargeId); }
+    catch { return say(chatId, 'The refund did not go through. Try again, or ask in /paysupport.'); }
+    delete team.plan;
+    engine.changed();
+    return say(chatId, 'Refunded. The team is back on the free plan.');
   }
 
   // A coordinator line for the lens. Long ones get a one-line version on the lens; the full text stays under Repeat reply.
@@ -498,6 +569,7 @@ Marked OK by ${q.from.first_name || 'coordinator'}.`).catch(() => {});
 
   async function handle(update) {
     if (update.message) return onMessage(update.message);
+    if (update.pre_checkout_query) return onPreCheckout(update.pre_checkout_query);
     if (update.callback_query) return onCallback(update.callback_query);
     if (update.my_chat_member) return onMyChatMember(update.my_chat_member);
     if (update.message_reaction) return onReaction(update.message_reaction);
