@@ -270,3 +270,20 @@ test('anyone in the group can read the board; the OK hand and heart reach the le
   const texts = engine.sync(token).replies.map((r) => r.text);
   assert.deepEqual(texts, ['OK', 'Thanks']);
 });
+
+test('the board adds ring when the wearer has the ring and stores no serial', async () => {
+  const { engine, token, run } = await started();
+  engine.heartbeat(token, { battery: 80, device: { model: 'ring1', ring: true, sn: 'SECRET1' } });
+  assert.match(boardText(engine, run.id), /glasses 80%, ring/);
+  assert.doesNotMatch(JSON.stringify(engine.runs), /SECRET1/);
+  engine.heartbeat(token, { battery: 80, device: { model: 'g2', ring: false } });
+  assert.doesNotMatch(boardText(engine, run.id), /ring/);
+});
+
+test('a heartbeat device is trimmed to 20 characters and a flag', async () => {
+  const { engine, token, run } = await started();
+  engine.heartbeat(token, { device: { model: 'g2<script>'.padEnd(40, 'x'), ring: 'yes' } });
+  const v = Object.values(engine.runs[run.id].volunteers)[0];
+  assert.equal(v.device.model.length, 20);
+  assert.equal(v.device.ring, false);
+});

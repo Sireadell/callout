@@ -80,7 +80,7 @@ export function warnLine(list) {
 function unpairedView(state, flash) {
   const j = state.join || {};
   if (j.phase === 'waiting') {
-    return screen([`Join code: ${j.code}`, '', `Send  /join ${j.code}`, 'in your team group.', ...flash], ['Or enter a code on your phone.'], 'Double tap: exit');
+    return screen([`Join code: ${j.code}`, state.userName ? `Hi ${state.userName}.` : '', `Send  /join ${j.code}`, 'in your team group.', ...flash], ['Or enter a code on your phone.'], 'Double tap: exit');
   }
   if (j.phase === 'claimed') {
     return screen([`Hi ${String(j.name || '').slice(0, 20)}.`, '', 'Waiting for the coordinator', 'to pick your area.', ...flash], [String(j.team || '').slice(0, COLS)], 'Double tap: exit');
@@ -92,7 +92,7 @@ function unpairedView(state, flash) {
     ? ['Take out your phone, open Lafiya', 'in the Even app and enter your code.']
     : ['Enter your code on the Lafiya page', 'on your phone.'];
   const note = j.phase === 'asking' ? ['Getting a join code...'] : j.phase === 'error' ? ['No join code. Try again in a minute.'] : [];
-  return screen(['LAFIYA', 'Not paired yet.', ...how, ...flash], note, j.phase === 'asking' ? 'Double tap: exit' : newCode);
+  return screen([state.userName ? `Hi ${state.userName}, enter your code` : 'LAFIYA', 'Not paired yet.', ...how, ...flash], note, j.phase === 'asking' ? 'Double tap: exit' : newCode);
 }
 
 // The main screen. Main box: the countdown, or the newest reply while it shows. A short answer

@@ -188,10 +188,12 @@ export class Engine {
     return { nextDueAt: v.lastCheckin + this.gap(run) };
   }
 
-  heartbeat(token, { battery, charging, inCase, worn, still, pos, app, reason } = {}) {
+  heartbeat(token, { battery, charging, inCase, worn, still, pos, app, reason, device } = {}) {
     const { run, v } = this._auth(token);
     if (app === 'closed') return this._appClosed(run, v, reason);
     this._touch(run, v, pos);
+    // Only a short model name and a ring flag are kept. Anything else a client sends is dropped.
+    if (device && typeof device.model === 'string' && device.model) v.device = { model: device.model.replace(/[^\w .-]/g, '').slice(0, 20), ring: device.ring === true };
     if (typeof battery === 'number') {
       v.battery = battery;
       const low = battery <= this.cfg.lowBatteryPct && !charging;
@@ -487,7 +489,7 @@ export class Engine {
         const left = v.lastCheckin + this.gap(run) - now;
         state = v.flags.silent || v.closed?.told ? 'silent' : v.step > 0 ? 'overdue' : left <= 0 ? 'due' : 'ok';
       }
-      return { id: v.id, name: v.name, area: v.area, state, battery: v.battery };
+      return { id: v.id, name: v.name, area: v.area, state, battery: v.battery, device: v.device || null };
     });
   }
 

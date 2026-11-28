@@ -1,4 +1,4 @@
-import { waitForEvenAppBridge, OsEventTypeList, EventSourceType, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
+import { waitForEvenAppBridge, DeviceModel, OsEventTypeList, EventSourceType, StartUpPageCreateResult, DeviceConnectType, AudioInputSource, AudioSpeakerRole, ImuReportPace } from '@evenrealities/even_hub_sdk';
 import { view, BOXES, MENU, ANSWER_ITEM, questionText, questionRows, SPEAK, quickClues, HOLD_MAX_S, HOLD_MIN_MS, holdScreen, listenScreen, thinkScreen, confirmScreen, isOk, voiceAction, okScreen, stillScreen, backupScreen, PHOTO_ITEM, pictureSize, toGrey, fit } from './view.js';
 import { makeStillness } from './motion.js';
 
@@ -485,11 +485,24 @@ async function checkIn() {
   catch (e) { if (isNetwork(e)) hold('/api/checkin', { pos: here }, 'Check-in'); else flash('▲ Not sent. Try again'); }
 }
 
+// Which kit and whose glasses, asked once. Only the model and a ring flag go to the server, never the serial number, name or avatar.
+async function readKit() {
+  try {
+    const info = await bridge.getDeviceInfo();
+    if (info?.model) state.kit = { model: String(info.model).slice(0, 20), ring: DeviceModel.isRing(info.model) };
+  } catch { /* the app works without it */ }
+  try {
+    const user = await bridge.getUserInfo();
+    const first = String(user?.name || '').trim().split(/\s+/)[0];
+    if (first) state.userName = first.slice(0, 20); // stays on the lens, never sent
+  } catch { /* the app works without it */ }
+}
+
 async function heartbeat() {
   if (!state.token || state.closed) return;
   const d = state.device;
   try {
-    await api('/api/heartbeat', { battery: d.batteryLevel, charging: d.isCharging, inCase: d.isInCase, worn: d.isWearing, still: state.stillUnanswered || undefined, pos: await pos() });
+    await api('/api/heartbeat', { battery: d.batteryLevel, charging: d.isCharging, inCase: d.isInCase, worn: d.isWearing, still: state.stillUnanswered || undefined, device: state.kit, pos: await pos() });
   } catch { /* ignore */ }
 }
 
@@ -699,6 +712,8 @@ async function start() {
   if (urlCode && !state.token) await pair(urlCode.toUpperCase()).catch(() => {});
   setInterval(() => { paint(); askIfNew(); watchDue(); showIfNewPicture(); }, 1000); setInterval(pollIfNeeded, 5000); setInterval(heartbeat, 30000);
   sync();
+  // Not awaited: a kit that never answers must not hold up the start. The first heartbeat carries the kit.
+  readKit().then(() => { paint(); if (state.token) heartbeat(); });
   longPoll();
   if (!state.token) requestJoin();
 }

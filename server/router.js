@@ -33,7 +33,7 @@ export function boardText(engine, runId) {
     const v = run.volunteers[s.id];
     const left = v.status === 'active' ? Math.round((v.lastCheckin + engine.gap(run) - engine.clock.now()) / 60000) : null;
     const when = run.status === 'ended' ? `${v.checkins} check-in${v.checkins === 1 ? '' : 's'}` : v.status === 'signed_out' ? 'signed out' : left === null ? 'not joined' : left >= 0 ? `next check-in in ${left} min` : `${-left} min overdue`;
-    return `${ICON[s.state]} ${s.name} (${s.area}) ${when}${s.battery != null ? `, glasses ${s.battery}%` : ''}`;
+    return `${ICON[s.state]} ${s.name} (${s.area}) ${when}${s.battery != null ? `, glasses ${s.battery}%` : ''}${s.device?.ring ? ', ring' : ''}`;
   });
   const roll = engine.rollTally?.(runId);
   const said = roll && Object.entries(roll.counts).map(([a, n]) => `${a} ${n}`);
