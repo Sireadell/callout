@@ -706,14 +706,14 @@ async function start() {
     if (s.connectType === DeviceConnectType.Connected || worn || lowNow) heartbeat();
     paint();
   });
-  await readKit();
   window.callout = { pair, sync, checkIn };
   // Local testing: open the page with ?code=XXXX to pair without typing.
   const urlCode = new URLSearchParams(location.search).get('code');
   if (urlCode && !state.token) await pair(urlCode.toUpperCase()).catch(() => {});
   setInterval(() => { paint(); askIfNew(); watchDue(); showIfNewPicture(); }, 1000); setInterval(pollIfNeeded, 5000); setInterval(heartbeat, 30000);
   sync();
-  if (state.token) heartbeat(); // lets the coordinator see the kit at once
+  // Not awaited: a kit that never answers must not hold up the start. The first heartbeat carries the kit.
+  readKit().then(() => { paint(); if (state.token) heartbeat(); });
   longPoll();
   if (!state.token) requestJoin();
 }
