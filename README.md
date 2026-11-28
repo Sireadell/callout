@@ -75,9 +75,9 @@ npm test
 
 | Command | What it shows | Result today |
 |---|---|---|
-| `npm run proof` | A full run on a fake Telegram chat: pairing, clue pin, reply, notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, clean-up | 23 of 23 checks pass, 36 messages sent |
-| `npm test` | Server tests, with a fake clock so timers run in milliseconds | 189 of 189 pass |
-| `cd glasses; npm install; npm test` | The lens app against fake glasses and a fake server | 66 of 66 pass |
+| `npm run proof` | A full run on a fake Telegram chat: pairing, clue pin, reply, notices at 17 and 22 minutes, battery, glasses off, gone quiet, debrief, clean-up | 23 of 23 checks pass, 37 messages sent |
+| `npm test` | Server tests, with a fake clock so timers run in milliseconds | 210 of 210 pass |
+| `cd glasses; npm install; npm test` | The lens app against fake glasses and a fake server | 70 of 70 pass |
 | `npm ci --prefix glasses; npm run panel:proof` | The real lens app against a local server, with fake glasses input and a fake Telegram | All checks pass |
 
 GitHub Actions runs all four on each push. The glasses app is a private beta on Even Hub (0.2.2) with 3 testers invited. Nobody has run it on real glasses yet.
@@ -90,9 +90,9 @@ The server uses one outside package, an MP3 encoder for voice notes. Everything 
 |---|---|
 | "Usefulness on G2 · 30%. Solves a real everyday moment, works at a glance and hands-free." | The check-in on a field shift. At a glance: countdown, area, team count. Hands-free: hold to talk, and a due check-in listens for "OK" |
 | "Read and write · 25%. Acting is fast: a short phrase, one tap or the ring, with smart defaults or AI drafts instead of long dictation." | Read: the reply as one line, a photo from the coordinator, and questions with up to 3 one-tap answers. Write: one tap checks in, picks a quick clue or says "got it", or hold, speak, let go. The coordinator answers with a button, an AI suggestion, a reaction, a line, a photo or a voice message, to one person or everyone |
-| "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram, and a try page that needs no glasses. 189 server tests, 66 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
+| "Technical execution · 20%. Works end to end, reliable, clean code." | End to end on the live server with real Telegram, and a try page that needs no glasses. 210 server tests, 70 lens tests, 23 proof checks. Timers live on the server, so a paused phone still gets noticed. With no signal, items wait and go out later |
 | "UX for display and voice · 15%. Clear on a 576 × 288 monochrome display, natural by voice." | A bright main line, a dim status line and a dim hint, each with a line limit. Plain glyphs (● ○ ▲), since the lens drops emoji. Every gesture gets an answer on screen |
-| "Business potential and safety · 10%. Real users and demand, careful with data and money." | Team notices only, not an emergency service. "I'm not OK" never checks in. Only the coordinator can act. No position kept after a run, keys only as hashes, the run notice says what goes to the AI. No real users yet, buyers are a guess |
+| "Business potential and safety · 10%. Real users and demand, careful with data and money." | Team notices only, not an emergency service. "I'm not OK" never checks in. Only the coordinator can act. No position kept after a run, keys only as hashes, the run notice says what goes to the AI. A Team plan paid in Telegram Stars, with refunds. A safety record file at the end of each run. No real users yet, buyers are a guess |
 
 ## On the glasses
 
@@ -106,6 +106,7 @@ The server uses one outside package, an MP3 encoder for voice notes. Everything 
 | Motion sensor, device status | "Still there?" after about five minutes with no head movement. Battery, worn, in case, connection |
 | App location, camera, album | Last known position on clues and check-ins. A photo on the last clue |
 | Local storage, exit events | Sign-in key and the offline queue. Closing the app tells the coordinator |
+| Device info, user info | The coordinator sees each wearer's glasses model. The lens greets the wearer by first name, which never leaves the glasses |
 
 Speech can mean a check-in, quick clue, backup (confirm screen only), cancel, or a clue. "Not", "no", "help", "hurt" never check in.
 
@@ -130,6 +131,8 @@ Speech can mean a check-in, quick clue, backup (confirm screen only), cancel, or
 | Check-ins quiet, missed ones buzz, positions can't be forwarded | `disable_notification`, `protect_content` |
 | Reactions show on the lens (thumbs up is "Seen"), and the bot reacts once a reply is seen | `message_reaction`, `setMessageReaction` |
 | Debrief as a table, with areas nobody checked in from | Rich message table, plain text fallback |
+| A safety record file at `/end`: who checked in when, missed notices, clues. No positions | `sendDocument` (CSV), protected |
+| Free for 8 people per run. A Team plan removes the cap: 250 Stars every 30 days, `/refund` within 7 days | Telegram Stars: `createInvoiceLink` with a subscription, `pre_checkout_query`, `refundStarPayment` |
 | Coordinator dashboard, positions as dots, no map service | Mini App, sign-in checked on the server |
 | Only the setup person or an admin can act; one coordinator can run two teams | `getChatMember` |
 | "Check-in time" in the volunteer's own chat, with a Check in button that works while the app is paused | Private chat |
@@ -171,6 +174,7 @@ What goes to the AI service, only if a key is set (Claude or OpenRouter): clue w
 | "Still there?", Discord buttons, Mini App | [motion.test.js](glasses/test/motion.test.js), [discord.test.js](test/discord.test.js), [miniapp.test.js](test/miniapp.test.js) | Tested with fakes only |
 | Photo from the coordinator on the lens | [picture.test.js](test/picture.test.js), [picture.test.js](glasses/test/picture.test.js) | Tested. Sent from real Telegram as a reply to a clue and drawn in the simulator |
 | Voice notes, off until `/voice on`, never stored | [voicenote.test.js](test/voicenote.test.js), [voicenote.test.js](glasses/test/voicenote.test.js) | Tested. Arrived in real Telegram under the clue, played back, and removed by `/end clear`. Off, no recording went out |
+| Safety record file, Team plan in Stars, glasses model on the board | [record.test.js](test/record.test.js), [stars.test.js](test/stars.test.js), [kit.test.js](glasses/test/kit.test.js) | Tested with fakes only. No real Stars payment yet |
 | `/try` practice teams: separate, 30 minutes, capped, no Telegram, Sheet, AI or disk | [sandbox.test.js](test/sandbox.test.js) | Tested, and run in a browser at desktop and phone width |
 
 ## Bugs the live test found
@@ -211,7 +215,7 @@ With a speech to text key, the provider deletes the transcript once the words co
 
 ## Who would pay (not validated)
 
-A guess: I haven't asked a buyer or tested a price. I'd start with groups that already run weekly volunteer shifts from a group chat (welfare-check rounds, charity delivery drivers, flood warden schemes), paying per team. Every volunteer would need G2 glasses.
+A guess: I haven't asked a buyer or tested a price. I'd start with groups that already run weekly volunteer shifts from a group chat (welfare-check rounds, charity delivery drivers, flood warden schemes), paying per team. The Team plan is priced at 250 Stars a month to test that, and free teams keep 8 people per run. Every volunteer would need G2 glasses.
 
 ## Run it with your own bot
 
