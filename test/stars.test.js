@@ -108,6 +108,15 @@ test('pre-checkout is accepted for a known team and refused for an unknown one',
   assert.ok(s.tg.prechecks[1][2]);
 });
 
+test('pre-checkout is refused when the price or currency is not the one on offer', async () => {
+  const s = setup(opts);
+  await start(s);
+  const payload = `team:${teamOf(s).id}`;
+  await s.bot.handle({ pre_checkout_query: { id: 'p1', from: SAM.from, invoice_payload: payload, currency: 'XTR', total_amount: 1 } });
+  await s.bot.handle({ pre_checkout_query: { id: 'p2', from: SAM.from, invoice_payload: payload, currency: 'USD', total_amount: 250 } });
+  assert.deepEqual(s.tg.prechecks.map((x) => [x[0], x[1]]), [['p1', false], ['p2', false]]);
+});
+
 test('a successful payment sets the plan, using the subscription end date when sent', async () => {
   const s = setup(opts);
   await start(s);

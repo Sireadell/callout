@@ -144,6 +144,7 @@ export class Telegram {
     return this.call('answerPreCheckoutQuery', ok ? { pre_checkout_query_id: id, ok: true } : { pre_checkout_query_id: id, ok: false, error_message: String(errorMessage || 'Payment not available').slice(0, 200) });
   }
   refundStarPayment(userId, chargeId) { return this.call('refundStarPayment', { user_id: userId, telegram_payment_charge_id: chargeId }); }
+  cancelStarSubscription(userId, chargeId) { return this.call('editUserStarSubscription', { user_id: userId, telegram_payment_charge_id: chargeId, is_canceled: true }); }
   answerCallback(id, text) { return this.call('answerCallbackQuery', { callback_query_id: id, text }); }
   getUpdates(offset, timeout = 25) {
     return this.call('getUpdates', { offset, timeout, allowed_updates: UPDATES });

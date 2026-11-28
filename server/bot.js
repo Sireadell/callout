@@ -325,7 +325,9 @@ ${AI_NOTICE}` : ''}`);
   // The last check before a Stars payment. It must be answered, so every path ends in an answer.
   async function onPreCheckout(q) {
     const team = engine.teams[String(q.invoice_payload || '').match(/^team:(.+)$/)?.[1]];
-    try { await telegram.answerPreCheckoutQuery(q.id, Boolean(team), team ? undefined : 'This plan is not available for that team.'); } catch { /* Telegram will show the failure */ }
+    // Only the price on offer, in Stars, for a team that exists.
+    const ok = Boolean(team) && q.currency === 'XTR' && q.total_amount === planStars;
+    try { await telegram.answerPreCheckoutQuery(q.id, ok, ok ? undefined : 'This plan is not available for that team.'); } catch { /* Telegram will show the failure */ }
   }
 
   async function onPaid(m) {
@@ -350,6 +352,8 @@ ${AI_NOTICE}` : ''}`);
     if (clockNow() - plan.paidAt > REFUND_DAYS * DAY) return say(chatId, `Refunds are only possible within ${REFUND_DAYS} days of paying.`);
     try { await telegram.refundStarPayment(plan.payer, plan.chargeId); }
     catch { return say(chatId, 'The refund did not go through. Try again, or ask in /paysupport.'); }
+    // Stop the monthly renewal too. The refund already went through, so a failure here is only logged.
+    if (telegram.cancelStarSubscription) await telegram.cancelStarSubscription(plan.payer, plan.chargeId).catch((e) => console.error('cancel subscription:', e.message));
     delete team.plan;
     engine.changed();
     return say(chatId, 'Refunded. The team is back on the free plan.');
