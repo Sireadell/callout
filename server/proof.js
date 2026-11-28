@@ -14,6 +14,7 @@ const telegram = {
   sendVenue: async (c, la, lo, title, addr, e) => rec(c, `${title} (${addr}) at ${la.toFixed(4)}, ${lo.toFixed(4)}`, e),
   sendLiveLocation: async (c, la, lo) => rec(c, `live location ${la}, ${lo}`), editLiveLocation: async () => {},
   stopLiveLocation: async () => {}, sendPhoto: async (c, b, cap, e) => rec(c, `photo: ${cap}`, e),
+  sendDocument: async (c, b, name, cap, e) => rec(c, `file ${name}: ${cap}`, e),
   createForumTopic: async () => { throw new Error('not a forum'); }, closeForumTopic: async () => {},
 };
 const engine = new Engine({ clock });

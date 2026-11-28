@@ -37,6 +37,7 @@ export function makeChat({ now = Date.now } = {}) {
     editButtons: async (chat, mid, markup) => { const m = find(mid); if (m) m.buttons = buttonsOf({ reply_markup: markup }); },
     sendVenue: async (chat, lat, lng, title, address, extra) => add(chat, `${title}\n${address}`, extra),
     sendPhoto: async (chat, bytes, caption, extra) => add(chat, caption || 'Photo', extra),
+    sendDocument: async (chat, bytes, filename, caption, extra) => add(chat, 'Safety record file (CSV)', extra),
     pin: async (chat, mid) => { const m = find(mid); if (m) m.pinned = true; },
     setReaction: async (chat, mid, emoji) => { const m = find(mid); if (m) m.reaction = emoji; },
     getChatMember: async (chat, user) => ({ status: user === COORDINATOR.id ? 'creator' : 'member' }),

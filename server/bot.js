@@ -4,6 +4,7 @@ import { PRESETS, boardText } from './router.js';
 import { parseSheetId } from './sheet.js';
 import { trimLine, suggestAnswers } from './ai.js';
 import { makeLimiter } from './limit.js';
+import { recordCsv, recordFilename } from './record.js';
 
 const HELP = [
   'Lafiya team check-in bot.',
@@ -278,6 +279,13 @@ ${AI_NOTICE}` : ''}`);
         try { const r = await sheet.writeDebrief(team.sheetId, debrief, summary); await say(chatId, `Debrief written to your sheet (${r.people} people, ${r.clues} clues).`, { disable_notification: true }); }
         catch (e) { await say(chatId, `Could not write to the sheet: ${e.message}`); }
       }
+      // The file goes up before the topic closes. A failure here never stops the end of the run.
+      try {
+        const to = team.telegram.chatId;
+        await telegram.sendDocument(to, Buffer.from(recordCsv(debrief), 'utf8'), recordFilename(debrief),
+          `Safety record for "${debrief.run}": ${debrief.volunteers.length} people, ${debrief.clues.length} clues. No positions included.`,
+          { protect_content: true, disable_notification: true, ...(run.topicId ? { message_thread_id: run.topicId } : {}) });
+      } catch (e) { console.error('safety record not sent:', e.message); }
       engine.announce(run.id, 'team', 'run_closed', '', { clear: arg.trim().toLowerCase() === 'clear' });
       return;
     }

@@ -92,6 +92,20 @@ export class Telegram {
       return data.result;
     });
   }
+  // A file (the safety record), sent as a form like a photo.
+  sendDocument(chatId, bytes, filename, caption, extra = {}) {
+    return this._queued(chatId, async () => {
+      const form = new FormData();
+      form.set('chat_id', String(chatId));
+      form.set('document', new Blob([bytes], { type: 'text/csv' }), filename);
+      if (caption) form.set('caption', caption.slice(0, 900));
+      for (const [k, v] of Object.entries(extra)) { if (v === undefined || v === null) continue; form.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v)); }
+      const res = await this.fetch(`https://api.telegram.org/bot${this.token}/sendDocument`, { method: 'POST', body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok) throw new Error(`telegram sendDocument: ${data.description || res.status}`);
+      return data.result;
+    });
+  }
   // Fetches a file someone sent in the chat. The address holds the bot token, so it never goes into an error.
   async download(fileId, maxBytes = 400 * 1024) {
     const file = await this.call('getFile', { file_id: fileId });
