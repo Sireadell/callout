@@ -1,6 +1,6 @@
 # Lafiya: team check-ins on Even G2 glasses, run from Telegram
 
-![CI](https://github.com/Sireadell/callout/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Sireadell/lafiya/actions/workflows/ci.yml/badge.svg)
 
 *Lafiya* is how you ask "are you well?" in Hausa, which is the question every check-in asks.
 
@@ -13,7 +13,7 @@
 |---|---|
 | Try it, no glasses | https://callout-dih6.onrender.com/try (the lens and the team chat side by side, no sign-in) |
 | Status page | https://callout-dih6.onrender.com/status (which parts are on, no names or positions) |
-| Code | https://github.com/Sireadell/callout |
+| Code | https://github.com/Sireadell/lafiya |
 
 ## Why I built it
 
@@ -66,8 +66,8 @@ The page lists more, up to a missed check-in notice after about two and a half m
 To check the code yourself, you need Node 22 or newer. No keys or accounts.
 
 ```powershell
-git clone https://github.com/Sireadell/callout
-cd callout
+git clone https://github.com/Sireadell/lafiya
+cd lafiya
 npm install
 npm run proof
 npm test
@@ -219,7 +219,7 @@ A guess: I haven't asked a buyer or tested a price. I'd start with groups that a
 2. Run `npm install`, then `npm start`. The log says "Telegram: polling".
 3. Send `/start` to your bot and use its link to add it to a group as admin.
 4. In the group: `/team Test`, `/run Elm Street`, `/add Ana | Area A1`. A pairing code appears.
-5. In a second window: `cd callout\glasses; npm install; npm run dev`. Open the page in the Even Hub simulator and enter the code. `npm run panel` fakes battery, signal and glasses off.
+5. In a second window: `cd lafiya\glasses; npm install; npm run dev`. Open the page in the Even Hub simulator and enter the code. `npm run panel` fakes battery, signal and glasses off.
 6. Tap to check in, pick a quick clue, watch the pin land, then send `/end`.
 
 Other `.env` keys are optional; each turns on one part.
