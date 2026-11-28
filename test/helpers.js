@@ -4,10 +4,10 @@ import { makeRouter } from '../server/router.js';
 import { makeBot } from '../server/bot.js';
 
 export function fakeTelegram() {
-  let id = 100; const out = []; const answers = []; const reactions = []; const docs = [];
+  let id = 100; const out = []; const answers = []; const reactions = []; const docs = []; const invoices = []; const prechecks = []; const refunds = [];
   const rec = (m) => { const full = { ...m, message_id: ++id }; out.push(full); return full; };
   return {
-    out, answers, reactions, docs,
+    out, answers, reactions, docs, invoices, prechecks, refunds,
     send: async (chat, text, extra = {}) => rec({ chat, text, extra }),
     edit: async (chat, mid, text) => { out.push({ chat, edit: mid, text }); return {}; },
     sendVenue: async (chat, lat, lng, title, address, extra = {}) => rec({ chat, text: `${title} @ ${address}`, extra }),
@@ -17,6 +17,9 @@ export function fakeTelegram() {
     editLiveLocation: async () => {}, stopLiveLocation: async () => {}, pin: async () => {},
     answerCallback: async (qid, text) => { answers.push([qid, text]); },
     setReaction: async (chat, mid, emoji) => { reactions.push([chat, mid, emoji]); },
+    createInvoiceLink: async (o) => { invoices.push(o); return `https://t.me/$invoice${invoices.length}`; },
+    answerPreCheckoutQuery: async (qid, ok, why) => { prechecks.push([qid, ok, why]); },
+    refundStarPayment: async (user, charge) => { refunds.push([user, charge]); },
     createForumTopic: async () => { throw new Error('not a forum'); }, closeForumTopic: async () => {},
   };
 }

@@ -150,7 +150,7 @@ async function poll() {
 async function startTelegram() {
   const me = await telegram.getMe();
   botName = me.username;
-  bot = makeBot({ engine, telegram, router, joins, botUsername: me.username, ai, sheet, stt: process.env.ASSEMBLYAI_API_KEY ? stt : null, appUrl: process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL}/app` : null, discordDefault: process.env.DISCORD_WEBHOOK_URL ? { webhookUrl: process.env.DISCORD_WEBHOOK_URL, channelId: process.env.DISCORD_CHANNEL_ID || null } : null });
+  bot = makeBot({ engine, telegram, router, joins, botUsername: me.username, freePeople: Number(process.env.FREE_PEOPLE) || 8, planStars: Number(process.env.PLAN_STARS) || 250, ai, sheet, stt: process.env.ASSEMBLYAI_API_KEY ? stt : null, appUrl: process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL}/app` : null, discordDefault: process.env.DISCORD_WEBHOOK_URL ? { webhookUrl: process.env.DISCORD_WEBHOOK_URL, channelId: process.env.DISCORD_CHANNEL_ID || null } : null });
   await bot.register().catch((e) => console.error('commands:', e.message));
   if (process.env.TELEGRAM_WEBHOOK_SECRET && process.env.PUBLIC_URL) {
     await telegram.setWebhook(`${process.env.PUBLIC_URL}/telegram/webhook`, process.env.TELEGRAM_WEBHOOK_SECRET);
