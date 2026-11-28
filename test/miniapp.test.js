@@ -112,3 +112,10 @@ test('one person sits in the middle, close people do not look far apart, names a
   assert.match(dotMap([person('<img src=x>', 51.5, -0.12)], esc), /&lt;img src=x&gt;/);
   assert.equal(dotMap([person('Ana', null)], esc), '');
 });
+
+test('the state shows each volunteer kit model', () => {
+  const w = world();
+  w.engine.heartbeat(w.token, { device: { model: 'g2', ring: true } });
+  const s = w.app.state(initFor({ id: 7, first_name: 'Sam' }));
+  assert.deepEqual(s.volunteers[0].device, { model: 'g2', ring: true });
+});

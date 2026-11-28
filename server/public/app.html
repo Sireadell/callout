@@ -62,7 +62,7 @@ async function load() {
     el('title').textContent = s.run ? `${s.team}: ${s.run}${s.status === 'ended' ? ' (finished)' : ''}` : s.team;
     el('map').innerHTML = s.status === 'active' ? dotMap(s.volunteers, esc) : '';
     el('list').innerHTML = s.volunteers.map((v) => `<div class="card"><div class="row"><span class="st ${esc(v.state)}">${mark[v.state] || '○'} ${esc(v.name)}</span><span>${esc(v.area)}</span></div>
-      <small>${word[v.state] || esc(v.state)}${v.battery != null ? `, glasses ${v.battery}%` : ''}, ${v.checkins} check-ins${v.pos?.at ? `, position seen ${ago(v.pos.at)}` : ''}</small><br>
+      <small>${word[v.state] || esc(v.state)}${v.device?.model ? `, ${esc(v.device.model)}${v.device.ring ? ' + ring' : ''}` : ''}${v.battery != null ? `, glasses ${v.battery}%` : ''}, ${v.checkins} check-ins${v.pos?.at ? `, position seen ${ago(v.pos.at)}` : ''}</small><br>
       ${s.status === 'active' && v.state !== 'waiting' && v.state !== 'out' ? s.presets.map((p, i) => `<button data-v="${esc(v.id)}" data-p="${i}">${esc(sent.get(`${v.id}|${i}`) || p)}</button>`).join('') : ''}</div>`).join('') || '<small>No volunteers yet.</small>';
     el('clues').innerHTML = s.clues.map((c) => `<div class="card"><b>${esc(c.by)}</b>: ${esc(c.text)}<br><small>${new Date(c.at).toLocaleTimeString()}</small></div>`).join('') || '<small>No clues yet.</small>';
   } catch (e) {

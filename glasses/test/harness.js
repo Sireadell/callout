@@ -25,7 +25,7 @@ export const syncReply = (patch = {}) => ({
   runName: 'Elm Street', area: 'Area A1', dueInMs: 600000, step: 0, replies: [], team: [], question: null, ...patch,
 });
 
-export async function startApp({ routes = {}, storage = { 'callout.token': 'tok' }, search = '' } = {}) {
+export async function startApp({ routes = {}, storage = { 'callout.token': 'tok' }, search = '', device, user } = {}) {
   const requests = [];
   const server = {
     '/api/sync': () => syncReply(),
@@ -55,6 +55,9 @@ export async function startApp({ routes = {}, storage = { 'callout.token': 'tok'
     async shutDownPageContainer(mode) { this.exits.push(mode); return true; },
     onEvenHubEvent(cb) { this.emit = cb; return () => {}; },
     onDeviceStatusChanged() { return () => {}; },
+    // device and user: a value, a function (may throw), or left out so the method is missing.
+    ...(device !== undefined && { async getDeviceInfo() { return typeof device === 'function' ? device() : device; } }),
+    ...(user !== undefined && { async getUserInfo() { return typeof user === 'function' ? user() : user; } }),
     onLaunchSource(cb) { this.launch = cb; return () => {}; },
   };
   // App timers must not keep the test process alive.

@@ -6,6 +6,7 @@ export const OsEventTypeList = numbered(['CLICK_EVENT', 'SCROLL_TOP_EVENT', 'SCR
 export const EventSourceType = numbered(['TOUCH_EVENT_FORM_DUMMY_NULL', 'TOUCH_EVENT_FROM_GLASSES_R', 'TOUCH_EVENT_FROM_RING', 'TOUCH_EVENT_FROM_GLASSES_L']);
 export const StartUpPageCreateResult = numbered(['success', 'invalid', 'oversize', 'outOfMemory']);
 export const DeviceConnectType = Object.freeze({ None: 'none', Connecting: 'connecting', Connected: 'connected', Disconnected: 'disconnected', ConnectionFailed: 'connectionFailed' });
+export const DeviceModel = Object.freeze(Object.defineProperty({ G1: 'g1', G2: 'g2', Ring1: 'ring1' }, 'isRing', { value: (model) => model === 'ring1' })); // isRing is hidden so the value check against the real kit still lines up
 export const AudioInputSource = Object.freeze({ Glasses: 'glasses', Phone: 'phone' });
 export const AudioSpeakerRole = Object.freeze({ Self: 'self', Other: 'other', Unknown: 'unknown' });
 export const ImuReportPace = Object.freeze({ P100: 100, P1000: 1000 });
